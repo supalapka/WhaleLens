@@ -3,6 +3,8 @@ import logging
 from fastapi import FastAPI
 from pydantic import BaseModel
 
+from services.checkers.dexscreener import get_token_data
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -60,3 +62,8 @@ async def webhook_tx(payload: WebhookPayload) -> dict[str, str]:
         )
 
     return {"status": "ok"}
+
+
+@app.get("/debug/token/{token_address}")
+async def debug_token(token_address: str):
+    return await get_token_data(token_address)
