@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 
 from services.checkers.dexscreener import get_token_data
+from services.checkers.honeypot import check_token_security
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -67,3 +68,8 @@ async def webhook_tx(payload: WebhookPayload) -> dict[str, str]:
 @app.get("/debug/token/{token_address}")
 async def debug_token(token_address: str):
     return await get_token_data(token_address)
+
+
+@app.get("/debug/security/{chain}/{token_address}")
+async def debug_security(chain: str, token_address: str):
+    return await check_token_security(token_address, chain.upper())
