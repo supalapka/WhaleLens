@@ -1,10 +1,18 @@
+from pathlib import Path
+
+from dotenv import load_dotenv
 from pydantic_settings import BaseSettings
+
+BASE_DIR = Path(__file__).resolve().parent
+load_dotenv(BASE_DIR / ".env", override=True)
 
 class Settings(BaseSettings):
     moralis_webhook_secret: str = ""
     n_workers: int = 1
     min_score_to_alert: int = 70
+    telegram_bot_token: str = ""
+    telegram_channel_id: str = ""
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    model_config = {"env_file": BASE_DIR / ".env", "env_file_encoding": "utf-8"}
 
 settings = Settings()
