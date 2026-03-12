@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     min_score_to_alert: int = 70
     telegram_bot_token: str = ""
     telegram_channel_id: str = ""
+    database_url: str = ""
 
     model_config = {"env_file": BASE_DIR / ".env", "env_file_encoding": "utf-8"}
 
