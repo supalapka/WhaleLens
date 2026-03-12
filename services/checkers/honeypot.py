@@ -45,6 +45,13 @@ async def check_token_security(token_address: str, chain: str) -> dict | None:
     return evaluate_security(token_data)
 
 
+def _parse_tax(value) -> float | None:
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return None
+
+
 def evaluate_security(token_data: dict) -> dict:
     failed_checks: list[str] = []
 
@@ -52,12 +59,17 @@ def evaluate_security(token_data: dict) -> dict:
         if token_data.get(flag) == "1":
             failed_checks.append(flag)
 
-    buy_tax = float(token_data.get("buy_tax", 0))
-    sell_tax = float(token_data.get("sell_tax", 0))
+    buy_tax = _parse_tax(token_data.get("buy_tax"))
+    sell_tax = _parse_tax(token_data.get("sell_tax"))
 
-    if buy_tax > TAX_THRESHOLD:
+    if buy_tax is None:
+        failed_checks.append("buy_tax_unknown")
+    elif buy_tax > TAX_THRESHOLD:
         failed_checks.append("buy_tax")
-    if sell_tax > TAX_THRESHOLD:
+
+    if sell_tax is None:
+        failed_checks.append("sell_tax_unknown")
+    elif sell_tax > TAX_THRESHOLD:
         failed_checks.append("sell_tax")
 
     return {
