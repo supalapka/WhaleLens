@@ -67,7 +67,10 @@ def score_price_impact(pct: float) -> float:
     return 8
 
 
-def compute_score(factors: dict) -> dict:
+from services.schemas import ScoreResult
+
+
+def compute_score(factors: dict) -> ScoreResult:
     breakdown = {
         "liquidity": score_liquidity(factors["liquidity_usd"]),
         "buy_amount": score_buy_amount(factors["buy_amount_usd"]),
@@ -78,4 +81,4 @@ def compute_score(factors: dict) -> dict:
         "price_impact": score_price_impact(factors["price_impact_pct"]),
     }
     total = max(0.0, min(100.0, sum(breakdown.values())))
-    return {"total": total, "breakdown": breakdown}
+    return ScoreResult(total=total, breakdown=breakdown)

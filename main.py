@@ -11,6 +11,7 @@ from models.wallet import Wallet
 from services.checkers.dexscreener import get_token_data
 from services.checkers.honeypot import check_token_security
 from services.queue import tx_queue, start_workers
+from services.schemas import TransactionEvent
 from services.scoring.engine import compute_score
 
 logging.basicConfig(level=logging.INFO)
@@ -74,16 +75,16 @@ async def webhook_tx(payload: WebhookPayload) -> dict[str, str]:
         chain = CHAIN_MAP.get(tx.chainId, tx.chainId)
 
         for transfer in payload.erc20Transfers:
-            event = {
-                "token_address": transfer.contract,
-                "chain": chain,
-                "wallet_address": from_address,
-                "wallet_id": wallet.id,
-                "wallet_label": wallet.label or from_address[:10],
-                "wallet_credibility": wallet.credibility_score,
-                "token_amount": float(transfer.valueWithDecimals),
-                "tx_hash": tx.hash,
-            }
+            event = TransactionEvent(
+                token_address=transfer.contract,
+                chain=chain,
+                wallet_address=from_address,
+                wallet_id=wallet.id,
+                wallet_label=wallet.label or from_address[:10],
+                wallet_credibility=wallet.credibility_score,
+                token_amount=float(transfer.valueWithDecimals),
+                tx_hash=tx.hash,
+            )
             await tx_queue.put(event)
             logger.info(
                 "Enqueued tx: %s (%s) on %s | token: %s | tx: %s",

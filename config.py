@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     moralis_webhook_secret: str = ""
     n_workers: int = 1
     min_score_to_alert: int = 70
+    alert_cooldown_hours: int = 6
     telegram_bot_token: str = ""
     telegram_channel_id: str = ""
     database_url: str = ""

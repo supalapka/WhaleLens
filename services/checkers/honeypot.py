@@ -2,6 +2,8 @@ import logging
 
 import httpx
 
+from services.schemas import SecurityResult
+
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://api.gopluslabs.io/api/v1/token_security"
@@ -19,7 +21,7 @@ FAIL_FLAGS = ("is_honeypot", "cannot_sell_all", "owner_change_balance", "slippag
 TAX_THRESHOLD = 0.1
 
 
-async def check_token_security(token_address: str, chain: str) -> dict | None:
+async def check_token_security(token_address: str, chain: str) -> SecurityResult | None:
     chain_id = GOPLUS_CHAIN_MAP.get(chain)
     if not chain_id:
         logger.error("Unsupported chain for GoPlus: %s", chain)
@@ -52,7 +54,7 @@ def _parse_tax(value) -> float | None:
         return None
 
 
-def evaluate_security(token_data: dict) -> dict:
+def evaluate_security(token_data: dict) -> SecurityResult:
     failed_checks: list[str] = []
 
     for flag in FAIL_FLAGS:
@@ -72,9 +74,9 @@ def evaluate_security(token_data: dict) -> dict:
     elif sell_tax > TAX_THRESHOLD:
         failed_checks.append("sell_tax")
 
-    return {
-        "is_safe": len(failed_checks) == 0,
-        "failed_checks": failed_checks,
-        "buy_tax": buy_tax,
-        "sell_tax": sell_tax,
-    }
+    return SecurityResult(
+        is_safe=len(failed_checks) == 0,
+        failed_checks=failed_checks,
+        buy_tax=buy_tax,
+        sell_tax=sell_tax,
+    )

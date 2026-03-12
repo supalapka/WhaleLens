@@ -15,7 +15,7 @@ async def _worker(worker_id: int) -> None:
         try:
             await process_transaction(event)
         except Exception:
-            logger.exception("Worker %d failed processing tx: %s", worker_id, event.get("tx_hash"))
+            logger.exception("Worker %d failed processing tx: %s", worker_id, event.tx_hash)
         finally:
             tx_queue.task_done()
 

@@ -24,40 +24,39 @@ def make_bar(got: float, max_: float, width: int = 10) -> str:
     return "\u2588" * filled + "\u2591" * (width - filled)
 
 
-def build_message(alert_data: dict) -> str:
-    token_address = alert_data["token_address"]
-    short_address = token_address[:6] + "..." + token_address[-4:]
-    breakdown = alert_data["breakdown"]
+from services.schemas import AlertData
+
+
+def build_message(alert: AlertData) -> str:
+    short_address = alert.token_address[:6] + "..." + alert.token_address[-4:]
 
     factor_lines = []
     for key, label in FACTOR_LABELS.items():
-        got = breakdown.get(key, 0)
+        got = alert.breakdown.get(key, 0)
         max_ = FACTOR_MAX[key]
         bar = make_bar(got, max_)
         factor_lines.append(f"{label:<14} {bar} {got}/{max_}")
 
-    whale_lines = f"\u00b7 {alert_data['wallet_label']} \u2014 ${alert_data['buy_amount_usd']:,.0f}"
-
-    score = alert_data["score"]
-    score_bar = make_bar(score, 100)
+    whale_lines = f"\u00b7 {alert.wallet_label} \u2014 ${alert.buy_amount_usd:,.0f}"
+    score_bar = make_bar(alert.score, 100)
 
     return (
-        f"\U0001f40b *WHALE ALERT* \u2014 {alert_data['chain']}\n"
+        f"\U0001f40b *WHALE ALERT* \u2014 {alert.chain}\n"
         f"\n"
-        f"\U0001fa99 *{alert_data['symbol']}* \u00b7 `{short_address}`\n"
-        f"\U0001f4ca Score: *{score:.0f}/100* {score_bar}\n"
+        f"\U0001fa99 *{alert.symbol}* \u00b7 `{short_address}`\n"
+        f"\U0001f4ca Score: *{alert.score:.0f}/100* {score_bar}\n"
         f"\n"
         f"\U0001f45b *Whales in this token:*\n"
         f"{whale_lines}\n"
         f"\n"
-        f"\U0001f4a7 Liquidity:     *${alert_data['liquidity_usd']:,.0f}*\n"
-        f"\U0001f4c8 Price Impact:  *{alert_data['price_impact_pct']:.1f}%*\n"
-        f"\U0001f4c5 Token Age:     *{alert_data['token_age_days']}d*\n"
-        f"\U0001f4b1 24h Txns:      *{alert_data['txns_24h']:,}*\n"
+        f"\U0001f4a7 Liquidity:     *${alert.liquidity_usd:,.0f}*\n"
+        f"\U0001f4c8 Price Impact:  *{alert.price_impact_pct:.1f}%*\n"
+        f"\U0001f4c5 Token Age:     *{alert.token_age_days}d*\n"
+        f"\U0001f4b1 24h Txns:      *{alert.txns_24h:,}*\n"
         f"\n"
         f"\U0001f50d *Score Breakdown:*\n"
         f"```\n{chr(10).join(factor_lines)}\n```\n"
         f"\n"
-        f"\U0001f517 [DexScreener](https://dexscreener.com/ethereum/{token_address})"
-        f" \u00b7 [Etherscan](https://etherscan.io/token/{token_address})"
+        f"\U0001f517 [DexScreener](https://dexscreener.com/ethereum/{alert.token_address})"
+        f" \u00b7 [Etherscan](https://etherscan.io/token/{alert.token_address})"
     )
