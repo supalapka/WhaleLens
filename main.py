@@ -2,8 +2,10 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Query
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from config import settings
 from database import async_session
@@ -11,7 +13,7 @@ from models.wallet import Wallet
 from services.checkers.dexscreener import get_token_data
 from services.checkers.honeypot import check_token_security
 from services.queue import tx_queue, start_workers
-from services.schemas import TransactionEvent
+from services.schemas import TransactionEvent, WalletCreate
 from services.scoring.engine import compute_score
 
 logging.basicConfig(level=logging.INFO)
@@ -92,6 +94,34 @@ async def webhook_tx(payload: WebhookPayload) -> dict[str, str]:
             )
 
     return {"status": "ok"}
+
+
+@app.post("/wallets")
+async def add_wallet(body: WalletCreate):
+    wallet = Wallet(
+        address=body.address,
+        label=body.label,
+        category=body.category,
+    )
+    try:
+        async with async_session() as session:
+            session.add(wallet)
+            await session.commit()
+            await session.refresh(wallet)
+    except IntegrityError:
+        return JSONResponse(
+            status_code=409,
+            content={"detail": f"wallet {body.address} already exists"},
+        )
+    return {
+        "id": wallet.id,
+        "address": wallet.address,
+        "label": wallet.label,
+        "category": wallet.category,
+        "credibility_score": wallet.credibility_score,
+        "is_active": wallet.is_active,
+        "added_at": wallet.added_at.isoformat(),
+    }
 
 
 @app.get("/debug/token/{token_address}")

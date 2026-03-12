@@ -1,4 +1,22 @@
-from pydantic import BaseModel
+import re
+
+from pydantic import BaseModel, field_validator
+
+
+_ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
+
+
+class WalletCreate(BaseModel):
+    address: str
+    label: str | None = None
+    category: str | None = None
+
+    @field_validator("address")
+    @classmethod
+    def validate_address(cls, v: str) -> str:
+        if not _ADDRESS_RE.match(v):
+            raise ValueError("invalid EVM address")
+        return v.lower()
 
 
 class TransactionEvent(BaseModel):
