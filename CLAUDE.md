@@ -6,7 +6,6 @@
 3. Enter plan mode before implementing any feature or bugfix.
 4. Do not add inline comments — code should be self-explanatory.
 5. Always prefer the simplest solution that satisfies the architectural constraints in rule #2.
-6. Every new feature must be covered by unit tests.
 7. Do not implement anything outside the agreed scope.
 8. Git commit messages must be written in natural language — no description body, no co-author trailer.
 
