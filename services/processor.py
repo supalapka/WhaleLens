@@ -1,6 +1,12 @@
 import logging
+from datetime import datetime, timedelta, timezone
+
+from sqlalchemy import select, func
 
 from config import settings
+from database import async_session
+from models.alert import Alert
+from models.transaction import Transaction
 from services.checkers.dexscreener import get_token_data
 from services.checkers.honeypot import check_token_security
 from services.notifier.formatter import build_message
@@ -9,11 +15,64 @@ from services.scoring.engine import compute_score
 
 logger = logging.getLogger(__name__)
 
-DB_MOCK_DEFAULTS = {
-    "whale_count": 1,
-    "wallet_credibility": 0.5,
-    "time_gap_hours": 0,
-}
+
+async def _get_whale_factors(token_address: str, wallet_credibility: float) -> dict:
+    async with async_session() as session:
+        seven_days_ago = func.now() - timedelta(days=7)
+
+        whale_count_result = await session.execute(
+            select(func.count(func.distinct(Transaction.wallet_id)))
+            .where(Transaction.token_address == token_address.lower())
+            .where(Transaction.created_at >= seven_days_ago)
+        )
+        whale_count = whale_count_result.scalar() or 0
+        whale_count = max(whale_count, 1)
+
+        time_gap_result = await session.execute(
+            select(
+                func.extract("epoch", func.max(Transaction.created_at) - func.min(Transaction.created_at)) / 3600
+            )
+            .where(Transaction.token_address == token_address.lower())
+            .where(Transaction.created_at >= seven_days_ago)
+        )
+        time_gap_hours = time_gap_result.scalar() or 0
+
+    return {
+        "whale_count": whale_count,
+        "wallet_credibility": wallet_credibility,
+        "time_gap_hours": float(time_gap_hours),
+    }
+
+
+async def _save_transaction(event: dict, score: float, symbol: str) -> None:
+    async with async_session() as session:
+        tx = Transaction(
+            wallet_id=event["wallet_id"],
+            token_address=event["token_address"].lower(),
+            token_symbol=symbol,
+            chain=event["chain"],
+            usd_amount=event.get("buy_amount_usd"),
+            tx_hash=event["tx_hash"],
+            score=score,
+        )
+        session.add(tx)
+        await session.commit()
+
+
+async def _save_alert(alert_data: dict, telegram_msg_id: int | None) -> None:
+    async with async_session() as session:
+        alert = Alert(
+            token_address=alert_data["token_address"].lower(),
+            token_symbol=alert_data["symbol"],
+            chain=alert_data["chain"],
+            score=alert_data["score"],
+            whale_count=alert_data["whale_count"],
+            liquidity_usd=alert_data["liquidity_usd"],
+            price_at_alert=alert_data["price_at_alert"],
+            telegram_msg_id=telegram_msg_id,
+        )
+        session.add(alert)
+        await session.commit()
 
 
 async def process_transaction(event: dict) -> dict | None:
@@ -39,12 +98,15 @@ async def process_transaction(event: dict) -> dict | None:
         return None
 
     buy_amount_usd = event["token_amount"] * token_data["price_usd"]
+    event["buy_amount_usd"] = buy_amount_usd
+
+    whale_factors = await _get_whale_factors(token_address, event["wallet_credibility"])
 
     factors = {
         "liquidity_usd": token_data["liquidity_usd"],
         "buy_amount_usd": buy_amount_usd,
         "price_impact_pct": token_data["price_impact_pct"],
-        **DB_MOCK_DEFAULTS,
+        **whale_factors,
     }
 
     result = compute_score(factors)
@@ -53,6 +115,8 @@ async def process_transaction(event: dict) -> dict | None:
         "Scored %s | wallet: %s | score: %.1f | breakdown: %s | tx: %s",
         token_address, wallet_label, result["total"], result["breakdown"], tx_hash,
     )
+
+    await _save_transaction(event, result["total"], token_data["symbol"])
 
     if result["total"] >= settings.min_score_to_alert:
         alert_data = {
@@ -67,9 +131,12 @@ async def process_transaction(event: dict) -> dict | None:
             "price_impact_pct": token_data["price_impact_pct"],
             "token_age_days": token_data["token_age_days"],
             "txns_24h": token_data["txns_24h"],
+            "whale_count": whale_factors["whale_count"],
+            "price_at_alert": token_data["price_usd"],
         }
         text = build_message(alert_data)
-        await send_alert(text)
+        msg_id = await send_alert(text)
+        await _save_alert(alert_data, msg_id)
 
     return {
         "score": result["total"],

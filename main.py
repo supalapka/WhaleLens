@@ -3,8 +3,11 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Query
 from pydantic import BaseModel
+from sqlalchemy import select
 
 from config import settings
+from database import async_session
+from models.wallet import Wallet
 from services.checkers.dexscreener import get_token_data
 from services.checkers.honeypot import check_token_security
 from services.queue import tx_queue, start_workers
@@ -38,14 +41,6 @@ class WebhookPayload(BaseModel):
     erc20Transfers: list[ERC20Transfer] = []
 
 
-TRACKED_WALLETS: dict[str, dict[str, str]] = {
-    "0x742d35cc6634c0532925a3b844bc454e4438f44e": {
-        "label": "Exchange Whale",
-        "category": "WHALE",
-    },
-}
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     workers = await start_workers(settings.n_workers)
@@ -66,7 +61,13 @@ async def health():
 async def webhook_tx(payload: WebhookPayload) -> dict[str, str]:
     for tx in payload.txs:
         from_address = tx.fromAddress.lower()
-        wallet = TRACKED_WALLETS.get(from_address)
+
+        async with async_session() as session:
+            result = await session.execute(
+                select(Wallet).where(Wallet.address == from_address).where(Wallet.is_active.is_(True))
+            )
+            wallet = result.scalar_one_or_none()
+
         if not wallet:
             continue
 
@@ -77,14 +78,16 @@ async def webhook_tx(payload: WebhookPayload) -> dict[str, str]:
                 "token_address": transfer.contract,
                 "chain": chain,
                 "wallet_address": from_address,
-                "wallet_label": wallet["label"],
+                "wallet_id": wallet.id,
+                "wallet_label": wallet.label or from_address[:10],
+                "wallet_credibility": wallet.credibility_score,
                 "token_amount": float(transfer.valueWithDecimals),
                 "tx_hash": tx.hash,
             }
             await tx_queue.put(event)
             logger.info(
                 "Enqueued tx: %s (%s) on %s | token: %s | tx: %s",
-                wallet["label"], from_address[:10], chain, transfer.contract, tx.hash,
+                wallet.label, from_address[:10], chain, transfer.contract, tx.hash,
             )
 
     return {"status": "ok"}
