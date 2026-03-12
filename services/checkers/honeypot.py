@@ -1,4 +1,5 @@
 import logging
+import time
 
 import httpx
 
@@ -7,6 +8,8 @@ from services.schemas import SecurityResult
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://api.gopluslabs.io/api/v1/token_security"
+CACHE_TTL = 600
+_cache: dict[str, tuple[float, SecurityResult]] = {}
 
 GOPLUS_CHAIN_MAP = {
     "ETH": "1",
@@ -22,6 +25,14 @@ TAX_THRESHOLD = 0.1
 
 
 async def check_token_security(token_address: str, chain: str) -> SecurityResult | None:
+    key = f"{token_address.lower()}:{chain}"
+    if key in _cache:
+        cached_at, cached_data = _cache[key]
+        if time.monotonic() - cached_at < CACHE_TTL:
+            logger.debug("GoPlus cache hit for %s on %s", token_address, chain)
+            return cached_data
+        del _cache[key]
+
     chain_id = GOPLUS_CHAIN_MAP.get(chain)
     if not chain_id:
         logger.error("Unsupported chain for GoPlus: %s", chain)
@@ -44,7 +55,9 @@ async def check_token_security(token_address: str, chain: str) -> SecurityResult
         logger.warning("No GoPlus data for %s on %s", token_address, chain)
         return None
 
-    return evaluate_security(token_data)
+    security = evaluate_security(token_data)
+    _cache[key] = (time.monotonic(), security)
+    return security
 
 
 def _parse_tax(value) -> float | None:
