@@ -2,6 +2,7 @@ import logging
 from datetime import timedelta
 
 from sqlalchemy import select, func
+from sqlalchemy.exc import IntegrityError
 
 from config import settings
 from database import async_session
@@ -57,18 +58,21 @@ async def _get_whale_factors(token_address: str) -> dict:
 
 
 async def _save_transaction(event: TransactionEvent, score: float, symbol: str) -> None:
-    async with async_session() as session:
-        tx = Transaction(
-            wallet_id=event.wallet_id,
-            token_address=event.token_address.lower(),
-            token_symbol=symbol,
-            chain=event.chain,
-            usd_amount=event.buy_amount_usd,
-            tx_hash=event.tx_hash,
-            score=score,
-        )
-        session.add(tx)
-        await session.commit()
+    try:
+        async with async_session() as session:
+            tx = Transaction(
+                wallet_id=event.wallet_id,
+                token_address=event.token_address.lower(),
+                token_symbol=symbol,
+                chain=event.chain,
+                usd_amount=event.buy_amount_usd,
+                tx_hash=event.tx_hash,
+                score=score,
+            )
+            session.add(tx)
+            await session.commit()
+    except IntegrityError:
+        logger.warning("Duplicate tx_hash %s, skipping save", event.tx_hash)
 
 
 async def _save_alert(alert: AlertData, telegram_msg_id: int | None) -> None:

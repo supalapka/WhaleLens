@@ -12,11 +12,30 @@ from database import async_session
 from models.wallet import Wallet
 from services.checkers.dexscreener import get_token_data
 from services.checkers.honeypot import check_token_security
-from services.queue import tx_queue, start_workers
+from services.queue import tx_queue, start_workers, worker_tasks
 from services.schemas import TransactionEvent, WalletCreate
 from services.scoring.engine import compute_score
 
-logging.basicConfig(level=logging.INFO)
+class _ColorFormatter(logging.Formatter):
+    COLORS = {
+        logging.DEBUG: "\033[36m",
+        logging.INFO: "\033[33m",
+        logging.WARNING: "\033[35m",
+        logging.ERROR: "\033[31m",
+        logging.CRITICAL: "\033[1;31m",
+    }
+    RESET = "\033[0m"
+
+    def format(self, record):
+        color = self.COLORS.get(record.levelno, self.RESET)
+        record.msg = f"{color}{record.msg}{self.RESET}"
+        return super().format(record)
+
+
+_handler = logging.StreamHandler()
+_handler.setFormatter(_ColorFormatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+logging.root.handlers = [_handler]
+logging.root.setLevel(logging.INFO)
 logger = logging.getLogger(__name__)
 
 CHAIN_MAP = {
@@ -34,12 +53,12 @@ class ERC20Transfer(BaseModel):
 
 class MoralisTx(BaseModel):
     fromAddress: str = ""
-    chainId: str = ""
     hash: str = ""
     value: str = "0"
 
 
 class WebhookPayload(BaseModel):
+    chainId: str = ""
     txs: list[MoralisTx] = []
     erc20Transfers: list[ERC20Transfer] = []
 
@@ -57,11 +76,19 @@ app = FastAPI(title="WhaleLens", lifespan=lifespan)
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "queue_size": tx_queue.qsize()}
+    return {
+        "status": "ok",
+        "queue_size": tx_queue.qsize(),
+        "workers": len(worker_tasks),
+        "workers_alive": sum(1 for t in worker_tasks if not t.done()),
+        "workers_failed": [str(t.exception()) for t in worker_tasks if t.done() and t.exception()],
+    }
 
 
 @app.post("/webhook/tx")
-async def webhook_tx(payload: WebhookPayload) -> dict[str, str]:
+async def webhook_tx(payload: WebhookPayload):
+    enqueued = 0
+    skipped = []
     for tx in payload.txs:
         from_address = tx.fromAddress.lower()
 
@@ -72,9 +99,10 @@ async def webhook_tx(payload: WebhookPayload) -> dict[str, str]:
             wallet = result.scalar_one_or_none()
 
         if not wallet:
+            skipped.append(from_address)
             continue
 
-        chain = CHAIN_MAP.get(tx.chainId, tx.chainId)
+        chain = CHAIN_MAP.get(payload.chainId, payload.chainId)
 
         for transfer in payload.erc20Transfers:
             event = TransactionEvent(
@@ -88,12 +116,14 @@ async def webhook_tx(payload: WebhookPayload) -> dict[str, str]:
                 tx_hash=tx.hash,
             )
             await tx_queue.put(event)
-            logger.info(
-                "Enqueued tx: %s (%s) on %s | token: %s | tx: %s",
-                wallet.label, from_address[:10], chain, transfer.contract, tx.hash,
-            )
+            enqueued += 1
 
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+        "enqueued": enqueued,
+        "skipped_addresses": skipped,
+        "queue_size": tx_queue.qsize(),
+    }
 
 
 @app.post("/wallets")
