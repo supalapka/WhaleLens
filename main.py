@@ -1,10 +1,11 @@
 import logging
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from pydantic import BaseModel
 
 from services.checkers.dexscreener import get_token_data
 from services.checkers.honeypot import check_token_security
+from services.scoring.engine import compute_score
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -73,3 +74,23 @@ async def debug_token(token_address: str):
 @app.get("/debug/security/{chain}/{token_address}")
 async def debug_security(chain: str, token_address: str):
     return await check_token_security(token_address, chain.upper())
+
+
+@app.get("/debug/score")
+async def debug_score(
+    liquidity_usd: float = Query(),
+    buy_amount_usd: float = Query(),
+    whale_count: int = Query(),
+    wallet_credibility: float = Query(),
+    time_gap_hours: float = Query(),
+    price_impact_pct: float = Query(),
+):
+    factors = {
+        "liquidity_usd": liquidity_usd,
+        "buy_amount_usd": buy_amount_usd,
+        "whale_count": whale_count,
+        "wallet_credibility": wallet_credibility,
+        "time_gap_hours": time_gap_hours,
+        "price_impact_pct": price_impact_pct,
+    }
+    return compute_score(factors)
