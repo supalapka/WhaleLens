@@ -1,7 +1,10 @@
 import logging
 
+from config import settings
 from services.checkers.dexscreener import get_token_data
 from services.checkers.honeypot import check_token_security
+from services.notifier.formatter import build_message
+from services.notifier.telegram import send_alert
 from services.scoring.engine import compute_score
 
 logger = logging.getLogger(__name__)
@@ -50,6 +53,23 @@ async def process_transaction(event: dict) -> dict | None:
         "Scored %s | wallet: %s | score: %.1f | breakdown: %s | tx: %s",
         token_address, wallet_label, result["total"], result["breakdown"], tx_hash,
     )
+
+    if result["total"] >= settings.min_score_to_alert:
+        alert_data = {
+            "token_address": token_address,
+            "chain": chain,
+            "symbol": token_data["symbol"],
+            "wallet_label": wallet_label,
+            "buy_amount_usd": buy_amount_usd,
+            "score": result["total"],
+            "breakdown": result["breakdown"],
+            "liquidity_usd": token_data["liquidity_usd"],
+            "price_impact_pct": token_data["price_impact_pct"],
+            "token_age_days": token_data["token_age_days"],
+            "txns_24h": token_data["txns_24h"],
+        }
+        text = build_message(alert_data)
+        await send_alert(text)
 
     return {
         "score": result["total"],
