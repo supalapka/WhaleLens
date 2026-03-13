@@ -1,3 +1,12 @@
+CHAIN_MAP: dict[str, str] = {
+    "0x1": "ETH",
+    "0x38": "BSC",
+    "0x2105": "BASE",
+    "0xa4b1": "ARBITRUM",
+}
+
+TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+
 STABLECOINS: set[str] = {
     "0xdac17f958d2ee523a2206206994597c13d831ec7",
     "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",

@@ -3,6 +3,8 @@ import logging
 import httpx
 
 from config import settings
+from models.constants import TRANSFER_TOPIC
+from services.schemas import ERC20Transfer, RawLog
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +73,31 @@ async def get_token_decimals(token_address: str, chain_id: str) -> int:
 
     _decimals_cache[key] = decimals
     return decimals
+
+
+async def decode_logs_to_transfers(logs: list[RawLog], chain_id: str) -> list[ERC20Transfer]:
+    transfers = []
+    for log in logs:
+        if log.topic0 != TRANSFER_TOPIC or not log.topic1 or not log.topic2:
+            continue
+
+        token_address = log.address.lower()
+        from_addr = "0x" + log.topic1[-40:]
+        to_addr = "0x" + log.topic2[-40:]
+        raw_amount = int(log.data, 16) if log.data and log.data != "0x" else 0
+
+        decimals = await get_token_decimals(token_address, chain_id)
+        amount = raw_amount / (10 ** decimals)
+
+        transfers.append(ERC20Transfer(
+            transactionHash=log.transactionHash,
+            contract=token_address,
+            from_address=from_addr,
+            to=to_addr,
+            valueWithDecimals=str(amount),
+            triggered_by=log.triggered_by,
+        ))
+    return transfers
 
 
 async def delete_stream() -> None:

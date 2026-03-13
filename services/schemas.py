@@ -1,9 +1,37 @@
 import re
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 _ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
+
+
+class ERC20Transfer(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    transactionHash: str = ""
+    contract: str = ""
+    from_address: str = Field("", alias="from")
+    to: str = ""
+    valueWithDecimals: str = "0"
+    tokenSymbol: str = ""
+    triggered_by: list[str] = Field(default_factory=list)
+
+
+class RawLog(BaseModel):
+    transactionHash: str = ""
+    address: str = ""
+    topic0: str | None = None
+    topic1: str | None = None
+    topic2: str | None = None
+    data: str = "0x"
+    triggered_by: list[str] = Field(default_factory=list)
+
+
+class WebhookPayload(BaseModel):
+    chainId: str = ""
+    erc20Transfers: list[ERC20Transfer] = []
+    logs: list[RawLog] = []
 
 
 class WalletCreate(BaseModel):
