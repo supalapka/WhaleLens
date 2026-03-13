@@ -22,20 +22,22 @@ async def process_webhook(payload: WebhookPayload) -> dict:
     if not transfers_source:
         transfers_source = await decode_logs_to_transfers(payload.logs, payload.chainId)
 
-    by_tx: dict[str, list[ERC20Transfer]] = defaultdict(list)
+    transfers_by_transaction: dict[str, list[ERC20Transfer]] = defaultdict(list)
     for t in transfers_source:
-        by_tx[t.transactionHash].append(t)
+        transfers_by_transaction[t.transactionHash].append(t)
 
-    for tx_hash, transfers in by_tx.items():
-        for transfer in transfers:
-            wallet_address = next((a.lower() for a in transfer.triggered_by), None)
-            if not wallet_address:
+    for tx_hash, transfers in transfers_by_transaction.items():
+        wallets_in_tx = {a.lower() for t in transfers for a in t.triggered_by}
+
+        for wallet_address in wallets_in_tx:
+            sent = [t for t in transfers if t.from_address.lower() == wallet_address]
+            received = [t for t in transfers if t.to.lower() == wallet_address]
+
+            if not sent or not received:
                 continue
 
-            if transfer.to.lower() != wallet_address:
-                continue
-
-            if transfer.contract.lower() in STABLECOINS:
+            bought = [t for t in received if t.contract.lower() not in STABLECOINS]
+            if not bought:
                 continue
 
             async with async_session() as session:
@@ -49,24 +51,24 @@ async def process_webhook(payload: WebhookPayload) -> dict:
                 continue
 
             buy_amount_usd = None
-            for other in transfers:
-                if other.from_address.lower() == wallet_address and other.contract.lower() in STABLECOINS:
-                    buy_amount_usd = float(other.valueWithDecimals)
-                    break
+            for t in sent:
+                if t.contract.lower() in STABLECOINS:
+                    buy_amount_usd = (buy_amount_usd or 0) + float(t.valueWithDecimals)
 
-            event = TransactionEvent(
-                token_address=transfer.contract,
-                chain=chain,
-                wallet_address=wallet_address,
-                wallet_id=wallet.id,
-                wallet_label=wallet.label or wallet_address[:10],
-                wallet_credibility=wallet.credibility_score,
-                token_amount=float(transfer.valueWithDecimals),
-                tx_hash=tx_hash,
-                buy_amount_usd=buy_amount_usd,
-            )
-            await tx_queue.put(event)
-            enqueued += 1
+            for token in bought:
+                event = TransactionEvent(
+                    token_address=token.contract,
+                    chain=chain,
+                    wallet_address=wallet_address,
+                    wallet_id=wallet.id,
+                    wallet_label=wallet.label or wallet_address[:10],
+                    wallet_credibility=wallet.credibility_score,
+                    token_amount=float(token.valueWithDecimals),
+                    tx_hash=tx_hash,
+                    buy_amount_usd=buy_amount_usd,
+                )
+                await tx_queue.put(event)
+                enqueued += 1
 
     return {
         "status": "ok",
