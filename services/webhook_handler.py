@@ -18,6 +18,18 @@ async def process_webhook(payload: WebhookPayload) -> dict:
     skipped = []
     chain = CHAIN_MAP.get(payload.chainId, payload.chainId)
 
+    all_wallets = {a.lower() for t in (payload.erc20Transfers or payload.logs) for a in t.triggered_by}
+    if all_wallets:
+        async with async_session() as session:
+            result = await session.execute(
+                select(Wallet).where(Wallet.address.in_(all_wallets)).where(Wallet.is_active.is_(True))
+            )
+            db_wallets = {w.address: w for w in result.scalars().all()}
+        for addr, w in db_wallets.items():
+            logger.info("Webhook from %s (%s)", w.label or addr[:10], addr)
+    else:
+        db_wallets = {}
+
     transfers_source = payload.erc20Transfers
     if not transfers_source:
         transfers_source = await decode_logs_to_transfers(payload.logs, payload.chainId)
@@ -40,12 +52,7 @@ async def process_webhook(payload: WebhookPayload) -> dict:
             if not bought:
                 continue
 
-            async with async_session() as session:
-                result = await session.execute(
-                    select(Wallet).where(Wallet.address == wallet_address).where(Wallet.is_active.is_(True))
-                )
-                wallet = result.scalar_one_or_none()
-
+            wallet = db_wallets.get(wallet_address)
             if not wallet:
                 skipped.append(wallet_address)
                 continue
