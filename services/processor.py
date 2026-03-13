@@ -117,7 +117,8 @@ async def process_transaction(event: TransactionEvent) -> dict | None:
         logger.warning("DexScreener unavailable for %s, skipping", token_address)
         return None
 
-    event.buy_amount_usd = event.token_amount * token_data.price_usd
+    if event.buy_amount_usd is None:
+        event.buy_amount_usd = event.token_amount * token_data.price_usd
 
     whale_factors = await _get_whale_factors(token_address)
 

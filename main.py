@@ -1,14 +1,16 @@
 import logging
+from collections import defaultdict
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Query
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from config import settings
 from database import async_session
+from models.constants import STABLECOINS
 from models.wallet import Wallet
 from services.checkers.dexscreener import get_token_data
 from services.checkers.honeypot import check_token_security
@@ -47,19 +49,19 @@ CHAIN_MAP = {
 
 
 class ERC20Transfer(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    transactionHash: str = ""
     contract: str = ""
+    from_address: str = Field("", alias="from")
+    to: str = ""
     valueWithDecimals: str = "0"
-
-
-class MoralisTx(BaseModel):
-    fromAddress: str = ""
-    hash: str = ""
-    value: str = "0"
+    tokenSymbol: str = ""
+    triggered_by: list[str] = Field(default_factory=list)
 
 
 class WebhookPayload(BaseModel):
     chainId: str = ""
-    txs: list[MoralisTx] = []
     erc20Transfers: list[ERC20Transfer] = []
 
 
@@ -89,31 +91,50 @@ async def health():
 async def webhook_tx(payload: WebhookPayload):
     enqueued = 0
     skipped = []
-    for tx in payload.txs:
-        from_address = tx.fromAddress.lower()
+    chain = CHAIN_MAP.get(payload.chainId, payload.chainId)
 
-        async with async_session() as session:
-            result = await session.execute(
-                select(Wallet).where(Wallet.address == from_address).where(Wallet.is_active.is_(True))
-            )
-            wallet = result.scalar_one_or_none()
+    by_tx: dict[str, list[ERC20Transfer]] = defaultdict(list)
+    for t in payload.erc20Transfers:
+        by_tx[t.transactionHash].append(t)
 
-        if not wallet:
-            skipped.append(from_address)
-            continue
+    for tx_hash, transfers in by_tx.items():
+        for transfer in transfers:
+            wallet_address = next((a.lower() for a in transfer.triggered_by), None)
+            if not wallet_address:
+                continue
 
-        chain = CHAIN_MAP.get(payload.chainId, payload.chainId)
+            if transfer.to.lower() != wallet_address:
+                continue
 
-        for transfer in payload.erc20Transfers:
+            if transfer.contract.lower() in STABLECOINS:
+                continue
+
+            async with async_session() as session:
+                result = await session.execute(
+                    select(Wallet).where(Wallet.address == wallet_address).where(Wallet.is_active.is_(True))
+                )
+                wallet = result.scalar_one_or_none()
+
+            if not wallet:
+                skipped.append(wallet_address)
+                continue
+
+            buy_amount_usd = None
+            for other in transfers:
+                if other.from_address.lower() == wallet_address and other.contract.lower() in STABLECOINS:
+                    buy_amount_usd = float(other.valueWithDecimals)
+                    break
+
             event = TransactionEvent(
                 token_address=transfer.contract,
                 chain=chain,
-                wallet_address=from_address,
+                wallet_address=wallet_address,
                 wallet_id=wallet.id,
-                wallet_label=wallet.label or from_address[:10],
+                wallet_label=wallet.label or wallet_address[:10],
                 wallet_credibility=wallet.credibility_score,
                 token_amount=float(transfer.valueWithDecimals),
-                tx_hash=tx.hash,
+                tx_hash=tx_hash,
+                buy_amount_usd=buy_amount_usd,
             )
             await tx_queue.put(event)
             enqueued += 1
