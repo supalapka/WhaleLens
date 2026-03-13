@@ -36,7 +36,21 @@ async def get_token_data(token_address: str) -> TokenData | None:
         logger.warning("No pairs found for %s", token_address)
         return None
 
-    pair = pairs[0]
+    base_pair = next(
+        (p for p in pairs if p.get("baseToken", {}).get("address", "").lower() == key),
+        None,
+    )
+
+    if base_pair:
+        pair = base_pair
+        price_usd = float(pair.get("priceUsd", 0))
+        symbol = pair.get("baseToken", {}).get("symbol", "???")
+    else:
+        pair = pairs[0]
+        base_price_usd = float(pair.get("priceUsd", 0))
+        price_native = float(pair.get("priceNative", 0))
+        price_usd = base_price_usd / price_native if price_native > 0 else 0.0
+        symbol = pair.get("quoteToken", {}).get("symbol", "???")
 
     created_at_ms = pair.get("pairCreatedAt", 0)
     if created_at_ms:
@@ -49,9 +63,9 @@ async def get_token_data(token_address: str) -> TokenData | None:
     txns_24h = pair.get("txns", {}).get("h24", {})
 
     result = TokenData(
-        symbol=pair.get("baseToken", {}).get("symbol", "???"),
+        symbol=symbol,
         liquidity_usd=float(pair.get("liquidity", {}).get("usd", 0)),
-        price_usd=float(pair.get("priceUsd", 0)),
+        price_usd=price_usd,
         price_impact_pct=float(pair.get("priceImpact", 0)),
         pair_created_at=created_at_ms,
         pair_created_at_date=created_at_date.strftime("%Y-%m-%d") if created_at_date else None,

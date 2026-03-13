@@ -133,8 +133,14 @@ async def process_transaction(event: TransactionEvent) -> dict | None:
     result = compute_score(factors)
 
     logger.info(
-        "Scored %s | wallet: %s | score: %.1f | breakdown: %s | tx: %s",
-        token_address, event.wallet_label, result.total, result.breakdown, tx_hash,
+        "Scored %s (%s)\n"
+        "  wallet:    %s\n"
+        "  amount:    $%.2f\n"
+        "  score:     %.1f\n"
+        "  breakdown: %s\n"
+        "  tx:        %s",
+        token_address, token_data.symbol, event.wallet_label,
+        event.buy_amount_usd, result.total, result.breakdown, tx_hash,
     )
 
     await _save_transaction(event, result.total, token_data.symbol)
