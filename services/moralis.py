@@ -25,6 +25,7 @@ async def create_stream() -> str:
         "chainIds": SUPPORTED_CHAINS,
         "includeNativeTxs": True,
         "includeContractLogs": True,
+        "status": "active",
     }
     async with httpx.AsyncClient() as client:
         response = await client.put(STREAMS_BASE_URL, headers=_headers(), json=body)
@@ -36,13 +37,13 @@ async def create_stream() -> str:
     return stream_id
 
 
-async def subscribe_addresses(addresses: list[str]) -> dict:
-    url = f"{STREAMS_BASE_URL}/{settings.moralis_stream_id}/address"
+async def subscribe_addresses(stream_id: str, addresses: list[str]) -> dict:
+    url = f"{STREAMS_BASE_URL}/{stream_id}/address"
     async with httpx.AsyncClient() as client:
         response = await client.post(url, headers=_headers(), json={"address": addresses})
         response.raise_for_status()
         result = response.json()
-    logger.info("Subscribed %d addresses to Moralis stream", len(addresses))
+    logger.info("Subscribed %d addresses to Moralis stream %s", len(addresses), stream_id)
     return result
 
 

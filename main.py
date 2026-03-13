@@ -12,6 +12,7 @@ from config import settings
 from database import async_session
 from models.constants import STABLECOINS
 from models.wallet import Wallet
+from services.moralis import create_stream, subscribe_addresses
 from services.checkers.dexscreener import get_token_data
 from services.checkers.honeypot import check_token_security
 from services.queue import tx_queue, start_workers, worker_tasks
@@ -173,6 +174,22 @@ async def add_wallet(body: WalletCreate):
         "is_active": wallet.is_active,
         "added_at": wallet.added_at.isoformat(),
     }
+
+
+@app.post("/wallets/subscribe")
+async def wallets_subscribe():
+    async with async_session() as session:
+        result = await session.execute(
+            select(Wallet.address).where(Wallet.is_active.is_(True))
+        )
+        addresses = list(result.scalars().all())
+
+    if not addresses:
+        return {"status": "ok", "subscribed": 0, "stream_id": None}
+
+    stream_id = await create_stream()
+    await subscribe_addresses(stream_id, addresses)
+    return {"status": "ok", "subscribed": len(addresses), "stream_id": stream_id}
 
 
 @app.get("/debug/token/{token_address}")
