@@ -6,7 +6,9 @@ from config import settings
 
 logger = logging.getLogger(__name__)
 
+API_BASE_URL = "https://deep-index.moralis.io/api/v2.2"
 STREAMS_BASE_URL = "https://api.moralis-streams.com/streams/evm"
+_decimals_cache: dict[str, int] = {}
 SUPPORTED_CHAINS = ["0x1", "0x38", "0x2105", "0xa4b1"]
 
 
@@ -45,6 +47,30 @@ async def subscribe_addresses(stream_id: str, addresses: list[str]) -> dict:
         result = response.json()
     logger.info("Subscribed %d addresses to Moralis stream %s", len(addresses), stream_id)
     return result
+
+
+async def get_token_decimals(token_address: str, chain_id: str) -> int:
+    key = f"{chain_id}:{token_address.lower()}"
+    if key in _decimals_cache:
+        return _decimals_cache[key]
+
+    url = f"{API_BASE_URL}/erc20/metadata"
+    params = {"addresses[]": token_address, "chain": chain_id}
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url, headers=_headers(), params=params, timeout=10)
+
+    if response.status_code != 200:
+        logger.warning("Moralis metadata failed for %s, defaulting to 18 decimals", token_address)
+        return 18
+
+    items = response.json()
+    if items and isinstance(items, list):
+        decimals = int(items[0].get("decimals", 18))
+    else:
+        decimals = 18
+
+    _decimals_cache[key] = decimals
+    return decimals
 
 
 async def delete_stream() -> None:

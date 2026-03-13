@@ -12,7 +12,7 @@ from config import settings
 from database import async_session
 from models.constants import STABLECOINS
 from models.wallet import Wallet
-from services.moralis import create_stream, subscribe_addresses
+from services.moralis import create_stream, get_token_decimals, subscribe_addresses
 from services.checkers.dexscreener import get_token_data
 from services.checkers.honeypot import check_token_security
 from services.queue import tx_queue, start_workers, worker_tasks
@@ -61,9 +61,48 @@ class ERC20Transfer(BaseModel):
     triggered_by: list[str] = Field(default_factory=list)
 
 
+class RawLog(BaseModel):
+    transactionHash: str = ""
+    address: str = ""
+    topic0: str | None = None
+    topic1: str | None = None
+    topic2: str | None = None
+    data: str = "0x"
+    triggered_by: list[str] = Field(default_factory=list)
+
+
 class WebhookPayload(BaseModel):
     chainId: str = ""
     erc20Transfers: list[ERC20Transfer] = []
+    logs: list[RawLog] = []
+
+
+TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+
+
+async def decode_logs_to_transfers(logs: list[RawLog], chain_id: str) -> list[ERC20Transfer]:
+    transfers = []
+    for log in logs:
+        if log.topic0 != TRANSFER_TOPIC or not log.topic1 or not log.topic2:
+            continue
+
+        token_address = log.address.lower()
+        from_addr = "0x" + log.topic1[-40:]
+        to_addr = "0x" + log.topic2[-40:]
+        raw_amount = int(log.data, 16) if log.data and log.data != "0x" else 0
+
+        decimals = await get_token_decimals(token_address, chain_id)
+        amount = raw_amount / (10 ** decimals)
+
+        transfers.append(ERC20Transfer(
+            transactionHash=log.transactionHash,
+            contract=token_address,
+            from_address=from_addr,
+            to=to_addr,
+            valueWithDecimals=str(amount),
+            triggered_by=log.triggered_by,
+        ))
+    return transfers
 
 
 @asynccontextmanager
@@ -94,8 +133,12 @@ async def webhook_tx(payload: WebhookPayload):
     skipped = []
     chain = CHAIN_MAP.get(payload.chainId, payload.chainId)
 
+    transfers_source = payload.erc20Transfers
+    if not transfers_source:
+        transfers_source = await decode_logs_to_transfers(payload.logs, payload.chainId)
+
     by_tx: dict[str, list[ERC20Transfer]] = defaultdict(list)
-    for t in payload.erc20Transfers:
+    for t in transfers_source:
         by_tx[t.transactionHash].append(t)
 
     for tx_hash, transfers in by_tx.items():
