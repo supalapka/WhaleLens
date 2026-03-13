@@ -8,7 +8,7 @@ from services.schemas import SecurityResult
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://api.gopluslabs.io/api/v1/token_security"
-CACHE_TTL = 600
+CACHE_TTL = 3600
 _cache: dict[str, tuple[float, SecurityResult]] = {}
 
 GOPLUS_CHAIN_MAP = {

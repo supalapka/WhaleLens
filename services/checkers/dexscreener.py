@@ -9,7 +9,7 @@ from services.schemas import TokenData
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://api.dexscreener.com/latest/dex/tokens"
-CACHE_TTL = 300
+CACHE_TTL = 3600
 _cache: dict[str, tuple[float, TokenData]] = {}
 
 
