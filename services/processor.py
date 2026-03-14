@@ -91,10 +91,22 @@ async def _save_alert(alert: AlertData, telegram_msg_id: int | None) -> None:
         await session.commit()
 
 
+async def _tx_already_processed(tx_hash: str) -> bool:
+    async with async_session() as session:
+        result = await session.execute(
+            select(Transaction.id).where(Transaction.tx_hash == tx_hash).limit(1)
+        )
+        return result.scalar() is not None
+
+
 async def process_transaction(event: TransactionEvent) -> dict | None:
     token_address = event.token_address
     chain = event.chain
     tx_hash = event.tx_hash
+
+    if await _tx_already_processed(tx_hash):
+        logger.info("Tx %s already processed, skipping", tx_hash[:10])
+        return None
 
     security = await check_token_security(token_address, chain)
     if security and not security.is_safe:

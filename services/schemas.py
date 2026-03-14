@@ -37,6 +37,7 @@ class WebhookTx(BaseModel):
 
 
 class WebhookPayload(BaseModel):
+    confirmed: bool = False
     chainId: str = ""
     erc20Transfers: list[ERC20Transfer] = []
     logs: list[RawLog] = []
