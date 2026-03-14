@@ -60,3 +60,32 @@ def build_message(alert: AlertData) -> str:
         f"\U0001f517 [DexScreener](https://dexscreener.com/ethereum/{alert.token_address})"
         f" \u00b7 [Etherscan](https://etherscan.io/token/{alert.token_address})"
     )
+
+
+def build_pair_message(
+    symbol: str,
+    name: str,
+    token_address: str,
+    pair_address: str | None,
+) -> str:
+    short_token = token_address[:6] + "..." + token_address[-4:]
+    title = f"*{symbol}*" if not name else f"*{symbol}* ({name})"
+
+    lines = [
+        "\U0001f195 *NEW PAIR* \u2014 BSC",
+        "",
+        f"\U0001fa99 {title}",
+        f"\U0001f4cb Token: `{short_token}`",
+    ]
+
+    if pair_address:
+        short_pair = pair_address[:6] + "..." + pair_address[-4:]
+        lines.append(f"\U0001f4b1 Pair: `{short_pair}`")
+
+    lines += [
+        "",
+        f"\U0001f517 [DexScreener](https://dexscreener.com/bsc/{token_address})"
+        f" \u00b7 [BscScan](https://bscscan.com/token/{token_address})",
+    ]
+
+    return "\n".join(lines)

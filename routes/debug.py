@@ -2,6 +2,7 @@ from fastapi import APIRouter, Query
 
 from services.checkers.dexscreener import get_token_data
 from services.checkers.honeypot import check_token_security
+from services.moralis import create_pair_stream
 from services.queue import tx_queue, worker_tasks
 from services.scoring.engine import compute_score
 
@@ -47,3 +48,9 @@ async def debug_score(
         "price_impact_pct": price_impact_pct,
     }
     return compute_score(factors)
+
+
+@router.post("/debug/create-pair-stream")
+async def debug_create_pair_stream():
+    stream_id = await create_pair_stream()
+    return {"stream_id": stream_id}

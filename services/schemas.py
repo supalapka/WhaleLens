@@ -44,6 +44,12 @@ class WebhookPayload(BaseModel):
     txs: list[WebhookTx] = []
 
 
+class PairCreatedPayload(BaseModel):
+    confirmed: bool = False
+    chainId: str = ""
+    logs: list[RawLog] = []
+
+
 class WalletCreate(BaseModel):
     address: str
     label: str | None = None
