@@ -75,6 +75,32 @@ async def get_token_decimals(token_address: str, chain_id: str) -> int:
     return decimals
 
 
+async def fetch_tx_logs(tx_hash: str, chain_id: str, triggered_by: list[str]) -> list[RawLog]:
+    url = f"{API_BASE_URL}/transaction/{tx_hash}"
+    params = {"chain": chain_id}
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url, headers=_headers(), params=params, timeout=10)
+
+    if response.status_code != 200:
+        logger.warning("Moralis fetch_tx_logs failed for %s: %s", tx_hash, response.status_code)
+        return []
+
+    data = response.json()
+    raw_logs = []
+    logger.info("fetch_tx_logs %s: got %d logs", tx_hash[:10], len(data.get("logs", [])))
+    for log in data.get("logs", []):
+        raw_logs.append(RawLog(
+            transactionHash=tx_hash,
+            address=log.get("address", ""),
+            topic0=log.get("topic0"),
+            topic1=log.get("topic1"),
+            topic2=log.get("topic2"),
+            data=log.get("data", "0x"),
+            triggered_by=triggered_by,
+        ))
+    return raw_logs
+
+
 async def decode_logs_to_transfers(logs: list[RawLog], chain_id: str) -> list[ERC20Transfer]:
     transfers = []
     for log in logs:

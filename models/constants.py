@@ -20,3 +20,10 @@ STABLECOINS: set[str] = {
     "0xaf88d065e77c8cc2239327c5edb3a432268e5831",
     "0xff970a61a04b1ca14834a43f5de4533ebddb5cc8",
 }
+
+WRAPPED_NATIVE: set[str] = {
+    "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+    "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c",
+    "0x4200000000000000000000000000000000000006",
+    "0x82af49447d8a07e3bd95bd0d56f35241523fbab1",
+}

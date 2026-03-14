@@ -28,10 +28,19 @@ class RawLog(BaseModel):
     triggered_by: list[str] = Field(default_factory=list)
 
 
+class WebhookTx(BaseModel):
+    hash: str = ""
+    fromAddress: str = ""
+    toAddress: str = ""
+    receiptStatus: str = ""
+    triggered_by: list[str] = Field(default_factory=list)
+
+
 class WebhookPayload(BaseModel):
     chainId: str = ""
     erc20Transfers: list[ERC20Transfer] = []
     logs: list[RawLog] = []
+    txs: list[WebhookTx] = []
 
 
 class WalletCreate(BaseModel):
