@@ -9,6 +9,10 @@ from services.scoring.engine import compute_score
 router = APIRouter()
 
 
+class CreateStreamRequest(BaseModel):
+    chain_ids: list[str]
+
+
 @router.get("/health")
 async def health():
     return {
@@ -51,6 +55,6 @@ async def debug_score(
 
 
 @router.post("/debug/create-pair-stream")
-async def debug_create_pair_stream():
-    stream_id = await create_pair_stream()
+async def debug_create_pair_stream(request: CreateStreamRequest):
+    stream_id = await create_pair_stream(request.chain_ids)
     return {"stream_id": stream_id}

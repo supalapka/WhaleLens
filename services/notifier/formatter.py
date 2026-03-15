@@ -18,6 +18,29 @@ FACTOR_LABELS = {
     "price_impact": "Price Impact",
 }
 
+CHAIN_INFO = {
+    "0x38": {
+        "label": "BSC",
+        "dexscreener": "bsc",
+        "explorer": "https://bscscan.com",
+    },
+    "0x1": {
+        "label": "Ethereum",
+        "dexscreener": "ethereum",
+        "explorer": "https://etherscan.io",
+    },
+    "0x2105": {
+        "label": "Base",
+        "dexscreener": "base",
+        "explorer": "https://basescan.org",
+    },
+    "0xa4b1": {
+        "label": "Arbitrum",
+        "dexscreener": "arbitrum",
+        "explorer": "https://arbiscan.io",
+    },
+}
+
 
 def make_bar(got: float, max_: float, width: int = 10) -> str:
     filled = round((got / max_) * width) if max_ > 0 else 0
@@ -67,12 +90,22 @@ def build_pair_message(
     name: str,
     token_address: str,
     pair_address: str | None,
+    chain_id: str,
 ) -> str:
+    chain = CHAIN_INFO.get(chain_id.lower())
+
+    if not chain:
+        chain = {
+            "label": chain_id,
+            "dexscreener": "ethereum",
+            "explorer": "https://etherscan.io",
+        }
+
     short_token = token_address[:6] + "..." + token_address[-4:]
     title = f"*{symbol}*" if not name else f"*{symbol}* ({name})"
 
     lines = [
-        "\U0001f195 *NEW PAIR* \u2014 BSC",
+        f"\U0001f195 *NEW PAIR* — {chain['label']}",
         "",
         f"\U0001fa99 {title}",
         f"\U0001f4cb Token: `{short_token}`",
@@ -84,8 +117,8 @@ def build_pair_message(
 
     lines += [
         "",
-        f"\U0001f517 [DexScreener](https://dexscreener.com/bsc/{token_address})"
-        f" \u00b7 [BscScan](https://bscscan.com/token/{token_address})",
+        f"\U0001f517 [DexScreener](https://dexscreener.com/{chain['dexscreener']}/{token_address})"
+        f" · [Explorer]({chain['explorer']}/token/{token_address})",
     ]
 
     return "\n".join(lines)
