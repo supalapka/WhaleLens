@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Query
-
 from services.checkers.dexscreener import get_token_data
-from services.checkers.honeypot import check_token_security
+from services.checkers.token_security import check_token_security
 from services.moralis import create_pair_stream
 from services.queue import tx_queue, worker_tasks
 from services.scoring.engine import compute_score
+from pydantic import BaseModel
 
 router = APIRouter()
 
