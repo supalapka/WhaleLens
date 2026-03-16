@@ -89,8 +89,13 @@ class TokenData(BaseModel):
 class SecurityResult(BaseModel):
     is_safe: bool
     failed_checks: list[str]
+    warnings: list[str] = []
     buy_tax: float | None
     sell_tax: float | None
+    liquidity_usd: float = 0.0
+    lp_locked_percent: float = 0.0
+    creator_token_percent: float = 0.0
+    holder_count: int = 0
 
 
 class ScoreResult(BaseModel):
