@@ -23,8 +23,6 @@ GOPLUS_CHAIN_MAP = {
 FAIL_FLAGS = (
     "is_honeypot",
     "cannot_sell_all",
-    "owner_change_balance",
-    "slippage_modifiable",
     "hidden_owner",
     "can_take_back_ownership",
     "is_mintable",
@@ -36,12 +34,16 @@ FAIL_FLAGS = (
     "anti_whale_modifiable",
 )
 
+WARN_FLAGS = (
+    "owner_change_balance",
+    "slippage_modifiable",
+)
+
 TAX_THRESHOLD = 0.1
-MIN_LIQUIDITY_USD = 10_000
-MAX_CREATOR_PERCENT = 0.05
-MAX_TOP_HOLDER_PERCENT = 0.20
+MIN_LIQUIDITY_USD = 3_000
+MAX_CREATOR_PERCENT = 0.30
+MAX_TOP_HOLDER_PERCENT = 0.40
 MIN_LP_LOCK_PERCENT = 0.80
-MIN_HOLDER_COUNT = 10
 
 DEAD_ADDRESSES = {
     "0x0000000000000000000000000000000000000000",
@@ -139,20 +141,27 @@ def evaluate_security(token_data: dict) -> SecurityResult:
     failed_checks: list[str] = []
     warnings: list[str] = []
 
+    if token_data.get("is_open_source") == "0":
+        failed_checks.append("not_open_source")
+
     for flag in FAIL_FLAGS:
         if token_data.get(flag) == "1":
             failed_checks.append(flag)
+
+    for flag in WARN_FLAGS:
+        if token_data.get(flag) == "1":
+            warnings.append(flag)
 
     buy_tax = _parse_tax(token_data.get("buy_tax"))
     sell_tax = _parse_tax(token_data.get("sell_tax"))
 
     if buy_tax is None:
-        failed_checks.append("buy_tax_unknown")
+        warnings.append("buy_tax_unknown")
     elif buy_tax > TAX_THRESHOLD:
         failed_checks.append(f"buy_tax_high:{buy_tax * 100:.1f}pct")
 
     if sell_tax is None:
-        failed_checks.append("sell_tax_unknown")
+        warnings.append("sell_tax_unknown")
     elif sell_tax > TAX_THRESHOLD:
         failed_checks.append(f"sell_tax_high:{sell_tax * 100:.1f}pct")
 
@@ -173,11 +182,9 @@ def evaluate_security(token_data: dict) -> SecurityResult:
         failed_checks.append(f"low_liquidity:{liquidity:.0f}usd")
 
     holder_count = int(token_data.get("holder_count", 0))
-    if holder_count < MIN_HOLDER_COUNT:
-        warnings.append(f"low_holder_count:{holder_count}")
 
     if token_data.get("honeypot_with_same_creator") == "1":
-        failed_checks.append("creator_has_honeypot_history")
+        warnings.append("creator_has_honeypot_history")
 
     return SecurityResult(
         is_safe=len(failed_checks) == 0,

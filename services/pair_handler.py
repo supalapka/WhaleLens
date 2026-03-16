@@ -11,7 +11,7 @@ from services.checkers.token_security import check_token_security
 logger = logging.getLogger(__name__)
 
 # give the coin developer some time to process coin and then check for security
-SECURITY_DELAY = 300
+SECURITY_DELAY = 900
 
 
 async def _identify_new_tokens(
@@ -56,11 +56,15 @@ async def _evaluate_and_notify(
         logger.info("Running delayed security check for %s", new_token)
 
         security = await check_token_security(new_token, chain_name)
-        if security and not security.is_safe:
+        if security and security.failed_checks:
             logger.info(
-                "Token %s failed safety: %s | tx: %s",
+                "Token %s hard-failed: %s | tx: %s",
                 new_token, security.failed_checks, tx_hash)
             return
+
+        warnings = security.warnings if security else []
+        if warnings:
+            logger.info("Token %s has warnings: %s", new_token, warnings)
 
         metadata = await get_token_metadata(new_token, chain_id)
         symbol = metadata.get("symbol", "???") if metadata else "???"
@@ -72,6 +76,7 @@ async def _evaluate_and_notify(
             token_address=new_token,
             pair_address=pair_address,
             chain_id=chain_id,
+            warnings=warnings,
         )
 
         await send_alert(text)

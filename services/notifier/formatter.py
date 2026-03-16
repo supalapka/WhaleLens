@@ -91,6 +91,7 @@ def build_pair_message(
     token_address: str,
     pair_address: str | None,
     chain_id: str,
+    warnings: list[str] | None = None,
 ) -> str:
     chain = CHAIN_INFO.get(chain_id.lower())
 
@@ -114,6 +115,11 @@ def build_pair_message(
     if pair_address:
         short_pair = pair_address[:6] + "..." + pair_address[-4:]
         lines.append(f"\U0001f4b1 Pair: `{short_pair}`")
+
+    if warnings:
+        lines += ["", "\u26a0\ufe0f *Warnings:*"]
+        for w in warnings:
+            lines.append(f"\u00b7 {w}")
 
     lines += [
         "",
