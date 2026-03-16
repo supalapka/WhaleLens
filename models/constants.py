@@ -37,6 +37,8 @@ FACTORY_BY_CHAIN = {
     "0xa4b1": ["0xc35dadb65012ec5796536bd9864ed8773abc74c4"],  # SushiSwap V2 (Arbitrum)
 }
 
+KNOWN_TOKENS: set[str] = WRAPPED_NATIVE | STABLECOINS
+
 WRAPPED_NATIVE_BY_CHAIN = {
     "0x38": "0xbb4cdb9cbd36b01bd1cbAEBF2De08d9173bc095c".lower(),  # WBNB
     "0x1": "0xC02aaA39b223FE8D0A0E5C4F27eAD9083C756Cc2".lower(),   # WETH
