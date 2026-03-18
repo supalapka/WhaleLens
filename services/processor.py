@@ -9,7 +9,7 @@ from database import async_session
 from models.alert import Alert
 from models.transaction import Transaction
 from services.checkers.dexscreener import get_token_data
-from services.checkers.honeypot import check_token_security
+from services.checkers.token_security import check_token_security
 from services.notifier.formatter import build_message
 from services.notifier.telegram import send_alert
 from services.schemas import TransactionEvent, AlertData
