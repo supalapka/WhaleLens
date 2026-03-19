@@ -45,3 +45,17 @@ WRAPPED_NATIVE_BY_CHAIN = {
     "0x2105": "0x4200000000000000000000000000000000000006".lower(), # WETH (Base)
     "0xa4b1": "0x82af49447d8a07e3bd95bd0d56f35241523fbab1".lower(), # WETH (Arbitrum)
 }
+
+DEXSCREENER_TO_MORALIS_CHAIN: dict[str, str] = {
+    "ethereum": "0x1",
+    "bsc": "0x38",
+    "base": "0x2105",
+    "arbitrum": "0xa4b1",
+}
+
+DEXSCREENER_TO_GECKO_NETWORK: dict[str, str] = {
+    "ethereum": "eth",
+    "bsc": "bsc",
+    "base": "base",
+    "arbitrum": "arbitrum",
+}
