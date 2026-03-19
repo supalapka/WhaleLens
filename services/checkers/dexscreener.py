@@ -1,4 +1,5 @@
 import logging
+import re
 import time
 from datetime import datetime, timezone
 
@@ -73,4 +74,41 @@ async def get_token_data(token_address: str) -> TokenData | None:
         txns_24h=txns_24h.get("buys", 0) + txns_24h.get("sells", 0),
     )
     _cache[key] = (time.monotonic(), result)
+    return result
+
+
+_EVM_ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
+MAX_POOLS = 3
+
+
+async def get_token_pairs(token_address: str) -> list[dict]:
+    url = f"{BASE_URL}/{token_address}"
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url, timeout=10)
+
+    if response.status_code != 200:
+        logger.error("DexScreener returned %s for %s", response.status_code, token_address)
+        return []
+
+    data = response.json()
+    pairs = data.get("pairs")
+    if not pairs:
+        return []
+
+    pairs.sort(key=lambda p: float(p.get("liquidity", {}).get("usd", 0)), reverse=True)
+
+    result = []
+    for p in pairs:
+        addr = p.get("pairAddress", "")
+        if not _EVM_ADDRESS_RE.match(addr):
+            continue
+        result.append({
+            "pair_address": addr.lower(),
+            "chain_id": p.get("chainId", ""),
+            "base_token": p.get("baseToken", {}).get("address", "").lower(),
+            "quote_token": p.get("quoteToken", {}).get("address", "").lower(),
+        })
+        if len(result) >= MAX_POOLS:
+            break
+
     return result
