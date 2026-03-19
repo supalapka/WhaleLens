@@ -1,11 +1,65 @@
-CHAIN_MAP: dict[str, str] = {
-    "0x1": "ETH",
-    "0x38": "BSC",
-    "0x2105": "BASE",
-    "0xa4b1": "ARBITRUM",
+from dataclasses import dataclass, field
+
+
+@dataclass(frozen=True)
+class ChainConfig:
+    hex_id: str
+    name: str
+    short_name: str
+    gecko_network: str
+    wrapped_native: str
+    factories: list[str] = field(default_factory=list)
+
+
+CHAINS: list[ChainConfig] = [
+    ChainConfig(
+        hex_id="0x1",
+        name="ethereum",
+        short_name="ETH",
+        gecko_network="eth",
+        wrapped_native="0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+    ),
+    ChainConfig(
+        hex_id="0x38",
+        name="bsc",
+        short_name="BSC",
+        gecko_network="bsc",
+        wrapped_native="0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c",
+        factories=["0xca143ce32fe78f1f7019d7d551a6402fc5350c73"],
+    ),
+    ChainConfig(
+        hex_id="0x2105",
+        name="base",
+        short_name="BASE",
+        gecko_network="base",
+        wrapped_native="0x4200000000000000000000000000000000000006",
+        factories=["0x8909dc15e40173ff4699343b6eb8132c65e18ec6"],
+    ),
+    ChainConfig(
+        hex_id="0xa4b1",
+        name="arbitrum",
+        short_name="ARBITRUM",
+        gecko_network="arbitrum",
+        wrapped_native="0x82af49447d8a07e3bd95bd0d56f35241523fbab1",
+        factories=["0xc35dadb65012ec5796536bd9864ed8773abc74c4"],
+    ),
+]
+
+CHAIN_MAP: dict[str, str] = {c.hex_id: c.short_name for c in CHAINS}
+
+FACTORY_BY_CHAIN: dict[str, list[str]] = {
+    c.hex_id: c.factories for c in CHAINS if c.factories
 }
 
+WRAPPED_NATIVE: set[str] = {c.wrapped_native for c in CHAINS}
+
+DEXSCREENER_TO_MORALIS_CHAIN: dict[str, str] = {c.name: c.hex_id for c in CHAINS}
+
+DEXSCREENER_TO_GECKO_NETWORK: dict[str, str] = {c.name: c.gecko_network for c in CHAINS}
+
 TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+
+PAIR_CREATED_TOPIC = "0x0d3648bd0f6ba80134a33ba9275ac585d9d315f0ad8355cddefde31afa28d0e9"
 
 STABLECOINS: set[str] = {
     "0xdac17f958d2ee523a2206206994597c13d831ec7",
@@ -21,41 +75,4 @@ STABLECOINS: set[str] = {
     "0xff970a61a04b1ca14834a43f5de4533ebddb5cc8",
 }
 
-WRAPPED_NATIVE: set[str] = {
-    "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
-    "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c",
-    "0x4200000000000000000000000000000000000006",
-    "0x82af49447d8a07e3bd95bd0d56f35241523fbab1",
-}
-
-PAIR_CREATED_TOPIC = "0x0d3648bd0f6ba80134a33ba9275ac585d9d315f0ad8355cddefde31afa28d0e9"
-
-
-FACTORY_BY_CHAIN = {
-    "0x38": ["0xca143ce32fe78f1f7019d7d551a6402fc5350c73"],  # PancakeSwap V2 (BSC)
-    "0x2105": ["0x8909dc15e40173ff4699343b6eb8132c65e18ec6"],  # Uniswap V2 (Base)
-    "0xa4b1": ["0xc35dadb65012ec5796536bd9864ed8773abc74c4"],  # SushiSwap V2 (Arbitrum)
-}
-
 KNOWN_TOKENS: set[str] = WRAPPED_NATIVE | STABLECOINS
-
-WRAPPED_NATIVE_BY_CHAIN = {
-    "0x38": "0xbb4cdb9cbd36b01bd1cbAEBF2De08d9173bc095c".lower(),  # WBNB
-    "0x1": "0xC02aaA39b223FE8D0A0E5C4F27eAD9083C756Cc2".lower(),   # WETH
-    "0x2105": "0x4200000000000000000000000000000000000006".lower(), # WETH (Base)
-    "0xa4b1": "0x82af49447d8a07e3bd95bd0d56f35241523fbab1".lower(), # WETH (Arbitrum)
-}
-
-DEXSCREENER_TO_MORALIS_CHAIN: dict[str, str] = {
-    "ethereum": "0x1",
-    "bsc": "0x38",
-    "base": "0x2105",
-    "arbitrum": "0xa4b1",
-}
-
-DEXSCREENER_TO_GECKO_NETWORK: dict[str, str] = {
-    "ethereum": "eth",
-    "bsc": "bsc",
-    "base": "base",
-    "arbitrum": "arbitrum",
-}
