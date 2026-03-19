@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from config import settings
 from logging_config import setup_logging
 from routes.debug import router as debug_router
+from routes.early_buyers import router as early_buyers_router
 from routes.wallets import router as wallets_router
 from routes.webhook import router as webhook_router
 from services.queue import start_workers
@@ -24,3 +25,4 @@ app = FastAPI(title="WhaleLens", lifespan=lifespan)
 app.include_router(webhook_router)
 app.include_router(wallets_router)
 app.include_router(debug_router)
+app.include_router(early_buyers_router)
