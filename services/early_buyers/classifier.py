@@ -1,5 +1,7 @@
 from collections import defaultdict
+from dataclasses import dataclass
 
+from models.constants import TRANSFER_TOPIC
 from services.early_buyers.schemas import (
     BuySummary,
     ClassifiedSwap,
@@ -11,9 +13,16 @@ from services.early_buyers.schemas import (
     _r_price,
 )
 
-MIN_BUY_USD = 50.0
+
+@dataclass(frozen=True)
+class QuoteTokenConfig:
+    address: str
+    decimals: int
+    to_usd: float
+
+MIN_BUY_USD = 20.0
 MIN_SOLD_RATIO_PCT = 1.0
-MIN_PROFIT_PCT = 500.0
+MIN_PROFIT_PCT = 300.0
 
 
 def classify_transfers(
@@ -83,6 +92,73 @@ def assign_swap_prices(
     return priced
 
 
+def _parse_receipt_quote_flows(
+    logs: list[dict],
+    quote_configs: list[QuoteTokenConfig],
+) -> dict[str, tuple[float, float]]:
+    quote_addrs = {q.address: q for q in quote_configs}
+    flows: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
+
+    for log in logs:
+        contract = log.get("address", "").lower()
+        cfg = quote_addrs.get(contract)
+        if not cfg:
+            continue
+        topics = log.get("topics", [])
+        if len(topics) < 3 or topics[0] != TRANSFER_TOPIC:
+            continue
+        from_addr = "0x" + topics[1][-40:]
+        to_addr = "0x" + topics[2][-40:]
+        raw_amount = log.get("data", "0x0")
+        amount = int(raw_amount, 16) / (10 ** cfg.decimals)
+
+        flows[from_addr]["out"] += amount * cfg.to_usd
+        flows[to_addr]["in"] += amount * cfg.to_usd
+
+    return {addr: (f.get("in", 0), f.get("out", 0)) for addr, f in flows.items()}
+
+
+def price_from_receipts(
+    swaps: list[ClassifiedSwap],
+    receipt_logs: dict[str, list[dict]],
+    quote_configs: list[QuoteTokenConfig],
+    is_buy: bool,
+) -> list[PricedSwap]:
+    base_by_key: dict[tuple[str, str], float] = defaultdict(float)
+    for swap in swaps:
+        base_by_key[(swap.tx_hash, swap.wallet_address)] += swap.token_amount
+
+    priced: list[PricedSwap] = []
+    for swap in swaps:
+        logs = receipt_logs.get(swap.tx_hash)
+        if not logs:
+            continue
+        wallet_flows = _parse_receipt_quote_flows(logs, quote_configs)
+        inflow, outflow = wallet_flows.get(swap.wallet_address, (0, 0))
+        net_usd = outflow - inflow if is_buy else inflow - outflow
+
+        if net_usd <= 0:
+            continue
+
+        total_base = base_by_key.get((swap.tx_hash, swap.wallet_address), 0)
+        if total_base <= 0:
+            continue
+
+        price_usd = net_usd / total_base
+        usd_value = swap.token_amount * price_usd
+
+        priced.append(PricedSwap(
+            wallet_address=swap.wallet_address,
+            token_amount=swap.token_amount,
+            timestamp=swap.timestamp,
+            tx_hash=swap.tx_hash,
+            price_usd=price_usd,
+            usd_value=usd_value,
+        ))
+
+    return priced
+
+
 def aggregate_wallets(
     buys: list[PricedSwap],
     sells: list[PricedSwap],
@@ -126,13 +202,13 @@ def aggregate_wallets(
             else 0.0
         )
 
+        profit_abs_usd = total_sold_usd - total_bought_usd
+
         profit_pct = (
-            ((avg_sell_price - avg_buy_price) / avg_buy_price) * 100
-            if avg_buy_price > 0 and avg_sell_price > 0
+            (profit_abs_usd / total_bought_usd) * 100
+            if total_bought_usd > 0
             else 0.0
         )
-
-        profit_abs_usd = total_sold_usd - (total_sold_tokens * avg_buy_price)
 
         first_buy_time = min(b.timestamp for b in wallet_buys)
         first_sell_time = min(s.timestamp for s in wallet_sells) if wallet_sells else None
