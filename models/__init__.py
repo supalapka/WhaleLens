@@ -8,3 +8,4 @@ class Base(DeclarativeBase):
 from models.wallet import Wallet
 from models.transaction import Transaction
 from models.alert import Alert
+from models.transfer_cache import TransferCache

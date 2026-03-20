@@ -1,10 +1,12 @@
 import asyncio
 import logging
+from datetime import datetime
 
 import httpx
 
 from config import settings
 from services.early_buyers.schemas import TokenTransfer
+from services.early_buyers.transfer_cache import get_cached_transfers, store_transfers
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +30,14 @@ async def fetch_pool_transfers(
     to_date_iso: str,
     max_pages: int = MAX_PAGES_PER_POOL,
 ) -> list[TokenTransfer]:
+    from_dt = datetime.fromisoformat(from_date_iso)
+    to_dt = datetime.fromisoformat(to_date_iso)
+
+    cached = await get_cached_transfers(pool_address, token_address, chain_hex, from_dt, to_dt)
+    if cached is not None:
+        logger.info("Cache hit for pool %s: %d transfers", pool_address[:10], len(cached))
+        return cached
+
     url = f"{API_BASE_URL}/{pool_address}/erc20/transfers"
     transfers: list[TokenTransfer] = []
     cursor: str | None = None
@@ -70,6 +80,7 @@ async def fetch_pool_transfers(
             max_pages, pool_address[:10],
         )
 
+    await store_transfers(pool_address, token_address, chain_hex, from_dt, to_dt, transfers)
     return transfers
 
 

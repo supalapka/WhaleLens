@@ -19,6 +19,6 @@ async def detect(request: EarlyBuyerRequest):
         raise HTTPException(status_code=404, detail=str(e))
     except InsufficientPriceDataError as e:
         raise HTTPException(status_code=422, detail=str(e))
-    except Exception:
-        logger.exception("Early buyer detection failed")
+    except Exception as e:
+        logger.exception("Early buyer detection failed: %s", e)
         raise HTTPException(status_code=502, detail="External API error")
