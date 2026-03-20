@@ -3,7 +3,11 @@ import logging
 from fastapi import APIRouter, HTTPException
 
 from services.early_buyers.detector import detect_early_buyers, top_wallets
-from services.early_buyers.exceptions import InsufficientPriceDataError, NoPairsFoundError
+from services.early_buyers.exceptions import (
+    InsufficientPriceDataError,
+    NoPairsFoundError,
+    UnsupportedChainError,
+)
 from services.early_buyers.schemas import EarlyBuyerRecord, EarlyBuyerRequest, EarlyBuyerResponse
 
 logger = logging.getLogger(__name__)
@@ -17,7 +21,7 @@ async def detect(request: EarlyBuyerRequest):
         return await detect_early_buyers(request)
     except NoPairsFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
-    except InsufficientPriceDataError as e:
+    except (InsufficientPriceDataError, UnsupportedChainError) as e:
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         logger.exception("Early buyer detection failed: %s", e)
@@ -30,7 +34,7 @@ async def get_top_wallets(request: EarlyBuyerRequest):
         return await top_wallets(request)
     except NoPairsFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
-    except InsufficientPriceDataError as e:
+    except (InsufficientPriceDataError, UnsupportedChainError) as e:
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         logger.exception("Top wallets query failed: %s", e)

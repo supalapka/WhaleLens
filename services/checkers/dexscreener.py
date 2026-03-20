@@ -107,6 +107,8 @@ async def get_token_pairs(token_address: str) -> list[dict]:
             "chain_id": p.get("chainId", ""),
             "base_token": p.get("baseToken", {}).get("address", "").lower(),
             "quote_token": p.get("quoteToken", {}).get("address", "").lower(),
+            "price_usd": float(p.get("priceUsd") or 0),
+            "price_native": float(p.get("priceNative") or 0),
         })
         if len(result) >= MAX_POOLS:
             break

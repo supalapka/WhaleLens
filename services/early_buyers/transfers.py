@@ -1,25 +1,79 @@
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
-import httpx
-
-from config import settings
+from services.early_buyers.block_lookup import timestamp_to_block
+from services.early_buyers.rpc import rpc_call
 from services.early_buyers.schemas import TokenTransfer
 from services.early_buyers.transfer_cache import get_cached_transfers, store_transfers
 
 logger = logging.getLogger(__name__)
 
-API_BASE_URL = "https://deep-index.moralis.io/api/v2.2"
-MAX_RETRIES = 3
-MAX_PAGES_PER_POOL = 1000
+MAX_PAGES = 1000
 
 
-def _headers() -> dict[str, str]:
-    return {
-        "X-API-Key": settings.moralis_api_key,
-        "Content-Type": "application/json",
-    }
+async def _fetch_asset_transfers(
+    chain_hex: str,
+    token_address: str,
+    from_block: int,
+    to_block: int,
+    from_address: str | None = None,
+    to_address: str | None = None,
+) -> list[dict]:
+    all_transfers: list[dict] = []
+    page_key: str | None = None
+    page = 0
+
+    while page < MAX_PAGES:
+        params: dict = {
+            "fromBlock": hex(from_block),
+            "toBlock": hex(to_block),
+            "contractAddresses": [token_address],
+            "category": ["erc20"],
+            "maxCount": "0x3e8",
+            "withMetadata": True,
+        }
+        if from_address:
+            params["fromAddress"] = from_address
+        if to_address:
+            params["toAddress"] = to_address
+        if page_key:
+            params["pageKey"] = page_key
+
+        result = await rpc_call(chain_hex, "alchemy_getAssetTransfers", [params])
+        if not result:
+            break
+
+        transfers = result.get("transfers", [])
+        all_transfers.extend(transfers)
+
+        page_key = result.get("pageKey")
+        if not page_key:
+            break
+        page += 1
+
+    return all_transfers
+
+
+def _parse_transfer(t: dict) -> TokenTransfer | None:
+    raw_value = t.get("rawContract", {}).get("value")
+    if not raw_value or raw_value == "0x":
+        return None
+
+    value = str(int(raw_value, 16))
+    decimals = t.get("rawContract", {}).get("decimal")
+    token_decimals = str(int(decimals, 16)) if decimals else "18"
+
+    block_ts = t.get("metadata", {}).get("blockTimestamp", "")
+
+    return TokenTransfer(
+        transaction_hash=t.get("hash", ""),
+        from_address=t.get("from", "").lower(),
+        to_address=t.get("to", "").lower(),
+        value=value,
+        block_timestamp=block_ts,
+        token_decimals=token_decimals,
+    )
 
 
 async def fetch_pool_transfers(
@@ -28,7 +82,8 @@ async def fetch_pool_transfers(
     chain_hex: str,
     from_date_iso: str,
     to_date_iso: str,
-    max_pages: int = MAX_PAGES_PER_POOL,
+    from_block: int | None = None,
+    to_block: int | None = None,
 ) -> list[TokenTransfer]:
     from_dt = datetime.fromisoformat(from_date_iso)
     to_dt = datetime.fromisoformat(to_date_iso)
@@ -38,111 +93,94 @@ async def fetch_pool_transfers(
         logger.info("Cache hit for pool %s: %d transfers", pool_address[:10], len(cached))
         return cached
 
-    url = f"{API_BASE_URL}/{pool_address}/erc20/transfers"
-    transfers: list[TokenTransfer] = []
-    cursor: str | None = None
-    page = 0
-
-    while page < max_pages:
-        params: dict = {
-            "chain": chain_hex,
-            "contract_addresses[]": token_address,
-            "from_date": from_date_iso,
-            "to_date": to_date_iso,
-            "limit": 100,
-        }
-        if cursor:
-            params["cursor"] = cursor
-
-        response = await _request_with_retry(url, params)
-        if response is None:
-            break
-
-        data = response.json()
-        for item in data.get("result", []):
-            transfers.append(TokenTransfer(
-                transaction_hash=item.get("transaction_hash", ""),
-                from_address=item.get("from_address", "").lower(),
-                to_address=item.get("to_address", "").lower(),
-                value=item.get("value", "0"),
-                block_timestamp=item.get("block_timestamp", ""),
-                token_decimals=item.get("token_decimals", "18"),
-            ))
-
-        cursor = data.get("cursor")
-        if not cursor:
-            break
-        page += 1
-
-    if page >= max_pages:
-        logger.warning(
-            "Hit page cap (%d) for pool %s — results may be incomplete",
-            max_pages, pool_address[:10],
+    if from_block is None or to_block is None:
+        from_ts = int(from_dt.timestamp())
+        to_ts = int(to_dt.timestamp())
+        from_block, to_block = await asyncio.gather(
+            timestamp_to_block(chain_hex, from_ts),
+            timestamp_to_block(chain_hex, to_ts),
         )
+    logger.info(
+        "Block range for %s: %d → %d (%d blocks)",
+        token_address[:10], from_block, to_block, to_block - from_block,
+    )
+
+    buy_raw, sell_raw = await asyncio.gather(
+        _fetch_asset_transfers(
+            chain_hex, token_address, from_block, to_block,
+            from_address=pool_address,
+        ),
+        _fetch_asset_transfers(
+            chain_hex, token_address, from_block, to_block,
+            to_address=pool_address,
+        ),
+    )
+
+    logger.info(
+        "Fetched %d buy + %d sell raw transfers for pool %s",
+        len(buy_raw), len(sell_raw), pool_address[:10],
+    )
+
+    seen: set[str] = set()
+    transfers: list[TokenTransfer] = []
+
+    for raw in buy_raw + sell_raw:
+        parsed = _parse_transfer(raw)
+        if not parsed:
+            continue
+        dedup_key = f"{parsed.transaction_hash}:{parsed.from_address}:{parsed.to_address}:{parsed.value}"
+        if dedup_key in seen:
+            continue
+        seen.add(dedup_key)
+        transfers.append(parsed)
+
+    logger.info(
+        "Parsed %d transfers for pool %s [%s → %s]",
+        len(transfers), pool_address[:10], from_date_iso, to_date_iso,
+    )
 
     await store_transfers(pool_address, token_address, chain_hex, from_dt, to_dt, transfers)
     return transfers
 
 
-async def fetch_swaps_from_pools(
-    pool_addresses: set[str],
-    token_address: str,
+async def fetch_quote_transfers(
+    pool_address: str,
+    quote_token_address: str,
     chain_hex: str,
-    from_date_iso: str,
-    to_date_iso: str,
-    max_pages: int = MAX_PAGES_PER_POOL,
+    from_block: int,
+    to_block: int,
 ) -> list[TokenTransfer]:
-    all_transfers: list[TokenTransfer] = []
-
-    for pool in pool_addresses:
-        transfers = await fetch_pool_transfers(
-            pool, token_address, chain_hex,
-            from_date_iso, to_date_iso, max_pages,
-        )
-        all_transfers.extend(transfers)
-        logger.info("Pool %s: %d transfers", pool[:10], len(transfers))
-
-    seen: set[str] = set()
-    deduplicated: list[TokenTransfer] = []
-    for t in all_transfers:
-        key = f"{t.transaction_hash}:{t.from_address}:{t.to_address}:{t.value}"
-        if key not in seen:
-            seen.add(key)
-            deduplicated.append(t)
+    inbound_raw, outbound_raw = await asyncio.gather(
+        _fetch_asset_transfers(
+            chain_hex, quote_token_address, from_block, to_block,
+            to_address=pool_address,
+        ),
+        _fetch_asset_transfers(
+            chain_hex, quote_token_address, from_block, to_block,
+            from_address=pool_address,
+        ),
+    )
 
     logger.info(
-        "Fetched %d swap transfers for %s [%s → %s]",
-        len(deduplicated), token_address[:10], from_date_iso, to_date_iso,
+        "Fetched %d inbound + %d outbound quote transfers for pool %s",
+        len(inbound_raw), len(outbound_raw), pool_address[:10],
     )
-    return deduplicated
 
+    seen: set[str] = set()
+    transfers: list[TokenTransfer] = []
 
-async def _request_with_retry(
-    url: str, params: dict, retries: int = MAX_RETRIES,
-) -> httpx.Response | None:
-    for attempt in range(retries):
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                url, headers=_headers(), params=params, timeout=30,
-            )
-
-        if response.status_code == 200:
-            return response
-
-        if response.status_code in (429, 500, 502, 503):
-            wait = 2 * (attempt + 1)
-            logger.warning(
-                "Moralis %s, retrying in %ds (attempt %d/%d)",
-                response.status_code, wait, attempt + 1, retries,
-            )
-            await asyncio.sleep(wait)
+    for raw in inbound_raw + outbound_raw:
+        parsed = _parse_transfer(raw)
+        if not parsed:
             continue
+        dedup_key = f"{parsed.transaction_hash}:{parsed.from_address}:{parsed.to_address}:{parsed.value}"
+        if dedup_key in seen:
+            continue
+        seen.add(dedup_key)
+        transfers.append(parsed)
 
-        logger.error(
-            "Moralis transfers failed: %s %s",
-            response.status_code, response.text[:200],
-        )
-        return None
-
-    logger.error("Moralis retries exhausted")
-    return None
+    logger.info(
+        "Parsed %d quote transfers for pool %s",
+        len(transfers), pool_address[:10],
+    )
+    return transfers

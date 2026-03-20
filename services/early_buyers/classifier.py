@@ -1,12 +1,9 @@
-import bisect
 from collections import defaultdict
-from datetime import datetime, timezone
 
 from services.early_buyers.schemas import (
     BuySummary,
     ClassifiedSwap,
     EarlyBuyerRecord,
-    OhlcvCandle,
     PricedSwap,
     SellSummary,
     TokenTransfer,
@@ -51,41 +48,36 @@ def classify_transfers(
     return buys, sells
 
 
-def assign_usd_prices(
+def assign_swap_prices(
     swaps: list[ClassifiedSwap],
-    candles: list[OhlcvCandle],
+    quote_transfers: list[TokenTransfer],
+    quote_to_usd: float,
 ) -> list[PricedSwap]:
-    if not candles:
-        return []
+    quote_by_tx: dict[str, float] = defaultdict(float)
+    for qt in quote_transfers:
+        quote_by_tx[qt.transaction_hash] += qt.token_amount
 
-    timestamps = [c.timestamp for c in candles]
-    priced: list[PricedSwap] = []
-
+    base_by_tx: dict[str, float] = defaultdict(float)
     for swap in swaps:
-        swap_ts = int(swap.timestamp.timestamp())
-        idx = bisect.bisect_left(timestamps, swap_ts)
+        base_by_tx[swap.tx_hash] += swap.token_amount
 
-        if idx == 0:
-            nearest = candles[0]
-        elif idx >= len(candles):
-            nearest = candles[-1]
-        else:
-            before = candles[idx - 1]
-            after = candles[idx]
-            nearest = (
-                before
-                if abs(before.timestamp - swap_ts) <= abs(after.timestamp - swap_ts)
-                else after
-            )
+    priced: list[PricedSwap] = []
+    for swap in swaps:
+        total_quote = quote_by_tx.get(swap.tx_hash, 0)
+        total_base = base_by_tx.get(swap.tx_hash, 0)
+        if total_quote <= 0 or total_base <= 0:
+            continue
 
-        price = nearest.close
+        price_usd = (total_quote / total_base) * quote_to_usd
+        usd_value = swap.token_amount * price_usd
+
         priced.append(PricedSwap(
             wallet_address=swap.wallet_address,
             token_amount=swap.token_amount,
             timestamp=swap.timestamp,
             tx_hash=swap.tx_hash,
-            price_usd=price,
-            usd_value=swap.token_amount * price,
+            price_usd=price_usd,
+            usd_value=usd_value,
         ))
 
     return priced
