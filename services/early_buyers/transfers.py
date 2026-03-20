@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 API_BASE_URL = "https://deep-index.moralis.io/api/v2.2"
 MAX_RETRIES = 3
-MAX_PAGES_PER_POOL = 20
+MAX_PAGES_PER_POOL = 1000
 
 
 def _headers() -> dict[str, str]:

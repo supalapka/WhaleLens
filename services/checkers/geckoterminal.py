@@ -9,8 +9,8 @@ logger = logging.getLogger(__name__)
 
 BASE_URL = "https://api.geckoterminal.com/api/v2"
 MAX_CANDLES_PER_REQUEST = 1000
-RATE_LIMIT_DELAY = 3.0
-MAX_RETRIES = 3
+RATE_LIMIT_DELAY = 5.0
+MAX_RETRIES = 4
 
 
 async def _request_with_retry(
