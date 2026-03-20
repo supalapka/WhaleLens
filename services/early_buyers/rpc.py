@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 MAX_RETRIES = 3
 BATCH_SIZE = 100
+BATCH_DELAY = 0.25
 
 
 def _get_rpc_url(chain_hex: str) -> str:
@@ -97,5 +98,8 @@ async def rpc_batch(chain_hex: str, calls: list[tuple[str, list]]) -> list[Any]:
                 idx = item.get("id")
                 if idx is not None and "result" in item:
                     results[idx] = item["result"]
+
+        if batch_start + BATCH_SIZE < len(calls):
+            await asyncio.sleep(BATCH_DELAY)
 
     return results

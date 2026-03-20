@@ -7,8 +7,13 @@ logger = logging.getLogger(__name__)
 
 MAX_ITERATIONS = 20
 
+_block_cache: dict[tuple[str, int], int] = {}
+
 
 async def timestamp_to_block(chain_hex: str, target_ts: int) -> int:
+    cache_key = (chain_hex, target_ts)
+    if cache_key in _block_cache:
+        return _block_cache[cache_key]
     latest = await rpc_call(chain_hex, "eth_getBlockByNumber", ["latest", False])
     if not latest:
         raise RuntimeError("Failed to fetch latest block")
@@ -47,4 +52,5 @@ async def timestamp_to_block(chain_hex: str, target_ts: int) -> int:
         "timestamp_to_block(%s, %d) = %d",
         chain_hex, target_ts, best_block,
     )
+    _block_cache[cache_key] = best_block
     return best_block
