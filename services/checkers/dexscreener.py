@@ -78,7 +78,7 @@ async def get_token_data(token_address: str) -> TokenData | None:
 
 
 _EVM_ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
-MAX_POOLS = 3
+MAX_POOLS = 20
 
 
 async def get_token_pairs(token_address: str) -> list[dict]:

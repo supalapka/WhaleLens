@@ -2,8 +2,13 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 
+from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert
+
+from database import async_session
+from models.receipt_cache import ReceiptCache
 from services.early_buyers.block_lookup import timestamp_to_block
-from services.early_buyers.rpc import rpc_call
+from services.early_buyers.rpc import rpc_batch, rpc_call
 from services.early_buyers.schemas import TokenTransfer
 from services.early_buyers.transfer_cache import get_cached_transfers, store_transfers
 
@@ -19,12 +24,13 @@ async def _fetch_asset_transfers(
     to_block: int,
     from_address: str | None = None,
     to_address: str | None = None,
+    max_pages: int = MAX_PAGES,
 ) -> list[dict]:
     all_transfers: list[dict] = []
     page_key: str | None = None
     page = 0
 
-    while page < MAX_PAGES:
+    while page < max_pages:
         params: dict = {
             "fromBlock": hex(from_block),
             "toBlock": hex(to_block),
@@ -143,21 +149,75 @@ async def fetch_pool_transfers(
     return transfers
 
 
+_ALL_POOLS_SENTINEL = "_all"
+
+
+async def fetch_all_token_transfers(
+    token_address: str,
+    chain_hex: str,
+    from_date_iso: str,
+    to_date_iso: str,
+    from_block: int,
+    to_block: int,
+) -> list[TokenTransfer]:
+    from_dt = datetime.fromisoformat(from_date_iso)
+    to_dt = datetime.fromisoformat(to_date_iso)
+
+    cached = await get_cached_transfers(_ALL_POOLS_SENTINEL, token_address, chain_hex, from_dt, to_dt)
+    if cached is not None:
+        logger.info("Cache hit for all transfers %s: %d transfers", token_address[:10], len(cached))
+        return cached
+
+    raw = await _fetch_asset_transfers(
+        chain_hex, token_address, from_block, to_block,
+    )
+    logger.info("Fetched %d raw token transfers for %s", len(raw), token_address[:10])
+
+    seen: set[str] = set()
+    transfers: list[TokenTransfer] = []
+
+    for r in raw:
+        parsed = _parse_transfer(r)
+        if not parsed:
+            continue
+        dedup_key = f"{parsed.transaction_hash}:{parsed.from_address}:{parsed.to_address}:{parsed.value}"
+        if dedup_key in seen:
+            continue
+        seen.add(dedup_key)
+        transfers.append(parsed)
+
+    logger.info("Parsed %d token transfers for %s", len(transfers), token_address[:10])
+
+    await store_transfers(_ALL_POOLS_SENTINEL, token_address, chain_hex, from_dt, to_dt, transfers)
+    return transfers
+
+
 async def fetch_quote_transfers(
     pool_address: str,
     quote_token_address: str,
     chain_hex: str,
     from_block: int,
     to_block: int,
+    max_pages: int = MAX_PAGES,
+    from_dt: datetime | None = None,
+    to_dt: datetime | None = None,
 ) -> list[TokenTransfer]:
+    if from_dt and to_dt:
+        cached = await get_cached_transfers(pool_address, quote_token_address, chain_hex, from_dt, to_dt)
+        if cached is not None:
+            logger.info("Cache hit for quote transfers pool %s: %d transfers", pool_address[:10], len(cached))
+            return cached
+
     inbound_raw, outbound_raw = await asyncio.gather(
         _fetch_asset_transfers(
             chain_hex, quote_token_address, from_block, to_block,
             to_address=pool_address,
+            max_pages=max_pages,
         ),
         _fetch_asset_transfers(
             chain_hex, quote_token_address, from_block, to_block,
             from_address=pool_address,
+            max_pages=max_pages,
         ),
     )
 
@@ -183,4 +243,92 @@ async def fetch_quote_transfers(
         "Parsed %d quote transfers for pool %s",
         len(transfers), pool_address[:10],
     )
+
+    if from_dt and to_dt:
+        await store_transfers(pool_address, quote_token_address, chain_hex, from_dt, to_dt, transfers)
+
     return transfers
+
+
+_receipt_l1: dict[tuple[str, str], list[dict]] = {}
+
+RECEIPT_DB_BATCH = 500
+
+
+async def _load_cached_receipts(
+    chain_hex: str, tx_hashes: list[str],
+) -> dict[str, list[dict]]:
+    cached: dict[str, list[dict]] = {}
+    unchecked: list[str] = []
+
+    for h in tx_hashes:
+        l1_val = _receipt_l1.get((chain_hex, h))
+        if l1_val is not None:
+            cached[h] = l1_val
+        else:
+            unchecked.append(h)
+
+    if not unchecked:
+        return cached
+
+    async with async_session() as session:
+        for i in range(0, len(unchecked), RECEIPT_DB_BATCH):
+            batch = unchecked[i:i + RECEIPT_DB_BATCH]
+            stmt = select(ReceiptCache).where(
+                ReceiptCache.chain == chain_hex,
+                ReceiptCache.tx_hash.in_(batch),
+            )
+            rows = (await session.execute(stmt)).scalars().all()
+            for row in rows:
+                cached[row.tx_hash] = row.logs_json
+                _receipt_l1[(chain_hex, row.tx_hash)] = row.logs_json
+
+    return cached
+
+
+async def _store_receipts(
+    chain_hex: str, new_receipts: dict[str, list[dict]],
+) -> None:
+    if not new_receipts:
+        return
+
+    values = [
+        {"chain": chain_hex, "tx_hash": h, "logs_json": logs}
+        for h, logs in new_receipts.items()
+    ]
+
+    async with async_session() as session:
+        for i in range(0, len(values), RECEIPT_DB_BATCH):
+            batch = values[i:i + RECEIPT_DB_BATCH]
+            stmt = insert(ReceiptCache).values(batch).on_conflict_do_nothing()
+            await session.execute(stmt)
+        await session.commit()
+
+
+async def fetch_tx_receipts(
+    chain_hex: str,
+    tx_hashes: list[str],
+) -> dict[str, list[dict]]:
+    cached = await _load_cached_receipts(chain_hex, tx_hashes)
+    uncached = [h for h in tx_hashes if h not in cached]
+
+    receipts = dict(cached)
+
+    if uncached:
+        calls = [("eth_getTransactionReceipt", [h]) for h in uncached]
+        results = await rpc_batch(chain_hex, calls)
+
+        new_receipts: dict[str, list[dict]] = {}
+        for tx_hash, result in zip(uncached, results):
+            if result and "logs" in result:
+                receipts[tx_hash] = result["logs"]
+                new_receipts[tx_hash] = result["logs"]
+                _receipt_l1[(chain_hex, tx_hash)] = result["logs"]
+
+        await _store_receipts(chain_hex, new_receipts)
+
+    logger.info(
+        "Fetched %d/%d receipts (%d cached)",
+        len(receipts), len(tx_hashes), len(tx_hashes) - len(uncached),
+    )
+    return receipts

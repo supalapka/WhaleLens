@@ -53,6 +53,8 @@ FACTORY_BY_CHAIN: dict[str, list[str]] = {
 
 WRAPPED_NATIVE: set[str] = {c.wrapped_native for c in CHAINS}
 
+WRAPPED_NATIVE_BY_CHAIN: dict[str, str] = {c.hex_id: c.wrapped_native for c in CHAINS}
+
 DEXSCREENER_TO_CHAIN_HEX: dict[str, str] = {c.name: c.hex_id for c in CHAINS}
 
 DEXSCREENER_TO_GECKO_NETWORK: dict[str, str] = {c.name: c.gecko_network for c in CHAINS}
