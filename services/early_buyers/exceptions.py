@@ -4,3 +4,7 @@ class NoPairsFoundError(Exception):
 
 class InsufficientPriceDataError(Exception):
     pass
+
+
+class UnsupportedChainError(Exception):
+    pass

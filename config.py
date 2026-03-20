@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     telegram_bot_token: str = ""
     telegram_channel_id: str = ""
     database_url: str = ""
+    alchemy_api_key: str = ""
 
     model_config = {"env_file": BASE_DIR / ".env", "env_file_encoding": "utf-8"}
 

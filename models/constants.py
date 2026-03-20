@@ -53,7 +53,7 @@ FACTORY_BY_CHAIN: dict[str, list[str]] = {
 
 WRAPPED_NATIVE: set[str] = {c.wrapped_native for c in CHAINS}
 
-DEXSCREENER_TO_MORALIS_CHAIN: dict[str, str] = {c.name: c.hex_id for c in CHAINS}
+DEXSCREENER_TO_CHAIN_HEX: dict[str, str] = {c.name: c.hex_id for c in CHAINS}
 
 DEXSCREENER_TO_GECKO_NETWORK: dict[str, str] = {c.name: c.gecko_network for c in CHAINS}
 
@@ -76,3 +76,13 @@ STABLECOINS: set[str] = {
 }
 
 KNOWN_TOKENS: set[str] = WRAPPED_NATIVE | STABLECOINS
+
+ALCHEMY_RPC_URLS: dict[str, str] = {
+    "0x1": "https://eth-mainnet.g.alchemy.com/v2",
+    "0x2105": "https://base-mainnet.g.alchemy.com/v2",
+}
+
+AVG_BLOCK_TIME: dict[str, int] = {
+    "0x1": 12,
+    "0x2105": 2,
+}
