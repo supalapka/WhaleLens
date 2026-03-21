@@ -63,21 +63,21 @@ TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523
 
 PAIR_CREATED_TOPIC = "0x0d3648bd0f6ba80134a33ba9275ac585d9d315f0ad8355cddefde31afa28d0e9"
 
-STABLECOINS: set[str] = {
-    "0xdac17f958d2ee523a2206206994597c13d831ec7",
-    "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
-    "0x6b175474e89094c44da98b954eedeac495271d0f",
-    "0x55d398326f99059ff775485246999027b3197955",
-    "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d",
-    "0xe9e7cea3dedca5984780bafc599bd69add087d56",
-    "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
-    "0xd9aaec86b65d86f6a7b5b1b0c42ffa531710b6ca",
-    "0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9",
-    "0xaf88d065e77c8cc2239327c5edb3a432268e5831",
-    "0xff970a61a04b1ca14834a43f5de4533ebddb5cc8",
+STABLECOINS: dict[str, int] = {
+    "0xdac17f958d2ee523a2206206994597c13d831ec7": 6,
+    "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48": 6,
+    "0x6b175474e89094c44da98b954eedeac495271d0f": 18,
+    "0x55d398326f99059ff775485246999027b3197955": 18,
+    "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d": 18,
+    "0xe9e7cea3dedca5984780bafc599bd69add087d56": 18,
+    "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913": 6,
+    "0xd9aaec86b65d86f6a7b5b1b0c42ffa531710b6ca": 6,
+    "0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9": 6,
+    "0xaf88d065e77c8cc2239327c5edb3a432268e5831": 6,
+    "0xff970a61a04b1ca14834a43f5de4533ebddb5cc8": 6,
 }
 
-KNOWN_TOKENS: set[str] = WRAPPED_NATIVE | STABLECOINS
+KNOWN_TOKENS: set[str] = WRAPPED_NATIVE | set(STABLECOINS)
 
 ALCHEMY_RPC_URLS: dict[str, str] = {
     "0x1": "https://eth-mainnet.g.alchemy.com/v2",

@@ -48,9 +48,10 @@ async def get_cached_transfers(
 
     entry = _l1.get(key)
     if entry and entry.from_dt <= from_dt and to_dt <= entry.to_dt:
-        filtered = _filter_by_window(entry.transfers, from_dt, to_dt)
-        logger.debug("L1 cache hit for %s: %d transfers", pool_address[:10], len(filtered))
-        return filtered
+        exact = entry.from_dt == from_dt and entry.to_dt == to_dt
+        transfers = entry.transfers if exact else _filter_by_window(entry.transfers, from_dt, to_dt)
+        logger.debug("L1 cache hit for %s: %d transfers", pool_address[:10], len(transfers))
+        return transfers
 
     async with async_session() as session:
         stmt = (
@@ -72,9 +73,10 @@ async def get_cached_transfers(
     transfers = [TokenTransfer(**item) for item in row.transfers_json]
     _l1[key] = _CacheEntry(from_dt=row.from_dt, to_dt=row.to_dt, transfers=transfers)
 
-    filtered = _filter_by_window(transfers, from_dt, to_dt)
-    logger.debug("DB cache hit for %s: %d transfers", pool_address[:10], len(filtered))
-    return filtered
+    exact = row.from_dt == from_dt and row.to_dt == to_dt
+    result = transfers if exact else _filter_by_window(transfers, from_dt, to_dt)
+    logger.debug("DB cache hit for %s: %d transfers", pool_address[:10], len(result))
+    return result
 
 
 async def store_transfers(

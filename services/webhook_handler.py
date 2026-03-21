@@ -12,7 +12,7 @@ from services.schemas import ERC20Transfer, TransactionEvent, WebhookPayload
 
 logger = logging.getLogger(__name__)
 
-EXCLUDED_TOKENS = STABLECOINS | WRAPPED_NATIVE
+EXCLUDED_TOKENS = set(STABLECOINS) | WRAPPED_NATIVE
 
 
 async def _fetch_tracked_wallets(addresses: set[str]) -> dict[str, Wallet]:
