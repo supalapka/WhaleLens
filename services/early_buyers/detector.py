@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 MIN_POOL_PEERS = 20
 QUOTE_FETCH_CONCURRENCY = 10
-MAX_QUOTE_PAGES = 1000
+MAX_QUOTE_PAGES = 50
 DISCOVERED_QUOTE_MAX_PAGES = 10
 MAX_RECEIPT_FETCHES = 10000
 
@@ -150,8 +150,8 @@ def _build_quote_configs(
     wrapped = WRAPPED_NATIVE_BY_CHAIN.get(chain_hex)
     if wrapped:
         configs.append(QuoteTokenConfig(address=wrapped, decimals=18, to_usd=dex_quote_to_usd))
-    for stable in STABLECOINS:
-        configs.append(QuoteTokenConfig(address=stable, decimals=6, to_usd=1.0))
+    for stable, decimals in STABLECOINS.items():
+        configs.append(QuoteTokenConfig(address=stable, decimals=decimals, to_usd=1.0))
     return configs
 
 
@@ -232,23 +232,26 @@ async def _fetch_and_price(
                 from_dt=cache_from_dt, to_dt=cache_to_dt,
             )
 
+    all_pools = list(dex_pools) + list(discovered_pools)
     dex_coros = [_fetch_quotes(p, MAX_QUOTE_PAGES) for p in dex_pools]
     disc_coros = [_fetch_quotes(p, DISCOVERED_QUOTE_MAX_PAGES) for p in discovered_pools]
     all_quote_results = await asyncio.gather(*dex_coros, *disc_coros)
 
-    combined_quotes: list[TokenTransfer] = []
-    for quotes in all_quote_results:
-        combined_quotes.extend(quotes)
+    quote_usd_by_tx: dict[str, float] = defaultdict(float)
+    total_quote_count = 0
+    for pool, quotes in zip(all_pools, all_quote_results):
+        total_quote_count += len(quotes)
+        for qt in quotes:
+            quote_usd_by_tx[qt.transaction_hash] += qt.token_amount * pool.quote_to_usd
 
-    quote_to_usd = dex_pools[0].quote_to_usd if dex_pools else (native_to_usd or 0.0)
-    priced_buys = assign_swap_prices(buys, combined_quotes, quote_to_usd)
-    priced_sells = assign_swap_prices(sells, combined_quotes, quote_to_usd)
+    priced_buys = assign_swap_prices(buys, quote_usd_by_tx)
+    priced_sells = assign_swap_prices(sells, quote_usd_by_tx)
 
     logger.info(
         "Quote pricing: %d/%d buys, %d/%d sells (%d quote transfers)",
         len(priced_buys), len(buys),
         len(priced_sells), len(sells),
-        len(combined_quotes),
+        total_quote_count,
     )
 
     priced_buy_hashes = {s.tx_hash for s in priced_buys}
@@ -257,8 +260,9 @@ async def _fetch_and_price(
     unpriced_sells = [s for s in sells if s.tx_hash not in priced_sell_hashes]
 
     if unpriced_buys or unpriced_sells:
+        native_usd = native_to_usd or (dex_pools[0].quote_to_usd if dex_pools else 0.0)
         receipt_buys, receipt_sells = await _price_via_receipts(
-            unpriced_buys, unpriced_sells, chain_hex, quote_to_usd,
+            unpriced_buys, unpriced_sells, chain_hex, native_usd,
         )
         priced_buys.extend(receipt_buys)
         priced_sells.extend(receipt_sells)

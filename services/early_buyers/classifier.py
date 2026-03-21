@@ -20,7 +20,7 @@ class QuoteTokenConfig:
     decimals: int
     to_usd: float
 
-MIN_BUY_USD = 20.0
+MIN_BUY_USD = 80.0
 MIN_SOLD_RATIO_PCT = 1.0
 MIN_PROFIT_PCT = 300.0
 
@@ -59,25 +59,20 @@ def classify_transfers(
 
 def assign_swap_prices(
     swaps: list[ClassifiedSwap],
-    quote_transfers: list[TokenTransfer],
-    quote_to_usd: float,
+    quote_usd_by_tx: dict[str, float],
 ) -> list[PricedSwap]:
-    quote_by_tx: dict[str, float] = defaultdict(float)
-    for qt in quote_transfers:
-        quote_by_tx[qt.transaction_hash] += qt.token_amount
-
     base_by_tx: dict[str, float] = defaultdict(float)
     for swap in swaps:
         base_by_tx[swap.tx_hash] += swap.token_amount
 
     priced: list[PricedSwap] = []
     for swap in swaps:
-        total_quote = quote_by_tx.get(swap.tx_hash, 0)
+        total_quote_usd = quote_usd_by_tx.get(swap.tx_hash, 0)
         total_base = base_by_tx.get(swap.tx_hash, 0)
-        if total_quote <= 0 or total_base <= 0:
+        if total_quote_usd <= 0 or total_base <= 0:
             continue
 
-        price_usd = (total_quote / total_base) * quote_to_usd
+        price_usd = total_quote_usd / total_base
         usd_value = swap.token_amount * price_usd
 
         priced.append(PricedSwap(
