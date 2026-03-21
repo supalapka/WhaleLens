@@ -127,6 +127,7 @@ class EarlyBuyerRecord(BaseModel):
 
 class EarlyBuyerResponse(BaseModel):
     token_address: str
+    token_symbol: str
     pump_start: int
     pump_peak: int
     pump_end: int

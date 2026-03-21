@@ -280,6 +280,7 @@ async def detect_early_buyers(request: EarlyBuyerRequest) -> EarlyBuyerResponse:
         )
 
     chain_hex, chain_id = _resolve_chain(pairs, request.chain)
+    token_symbol = pairs[0].get("base_symbol", "???")
     dex_pools = _resolve_dex_pools(pairs, chain_id)
 
     logger.info(
@@ -304,7 +305,7 @@ async def detect_early_buyers(request: EarlyBuyerRequest) -> EarlyBuyerResponse:
     )
 
     if not priced_buys and not priced_sells:
-        return _empty_response(request)
+        return _empty_response(request, token_symbol)
 
     all_priced = priced_buys + priced_sells
     peak_price = max(s.price_usd for s in all_priced) if all_priced else 0.0
@@ -330,6 +331,7 @@ async def detect_early_buyers(request: EarlyBuyerRequest) -> EarlyBuyerResponse:
 
     return EarlyBuyerResponse(
         token_address=request.token_address,
+        token_symbol=token_symbol,
         pump_start=request.pump_start,
         pump_peak=request.pump_peak,
         pump_end=request.pump_peak,
@@ -374,9 +376,10 @@ async def top_wallets(request: EarlyBuyerRequest, limit: int = 10) -> list[Early
     return records[:limit]
 
 
-def _empty_response(request: EarlyBuyerRequest) -> EarlyBuyerResponse:
+def _empty_response(request: EarlyBuyerRequest, token_symbol: str) -> EarlyBuyerResponse:
     return EarlyBuyerResponse(
         token_address=request.token_address,
+        token_symbol=token_symbol,
         pump_start=request.pump_start,
         pump_peak=request.pump_peak,
         pump_end=request.pump_peak,

@@ -10,3 +10,4 @@ from models.transaction import Transaction
 from models.alert import Alert
 from models.transfer_cache import TransferCache
 from models.receipt_cache import ReceiptCache
+from models.wallet_detection import WalletDetection
