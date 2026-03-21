@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 MAX_RETRIES = 3
 BATCH_SIZE = 100
-BATCH_DELAY = 0.25
+BATCH_DELAY = 0.5
 
 
 def _get_rpc_url(chain_hex: str) -> str:

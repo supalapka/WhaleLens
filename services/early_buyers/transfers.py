@@ -305,30 +305,56 @@ async def _store_receipts(
         await session.commit()
 
 
+RECEIPT_RETRY_ROUNDS = 5
+RECEIPT_RETRY_DELAY = 5.0
+
+
 async def fetch_tx_receipts(
     chain_hex: str,
     tx_hashes: list[str],
 ) -> dict[str, list[dict]]:
     cached = await _load_cached_receipts(chain_hex, tx_hashes)
-    uncached = [h for h in tx_hashes if h not in cached]
+    remaining = [h for h in tx_hashes if h not in cached]
 
     receipts = dict(cached)
+    all_new: dict[str, list[dict]] = {}
 
-    if uncached:
-        calls = [("eth_getTransactionReceipt", [h]) for h in uncached]
+    for attempt in range(RECEIPT_RETRY_ROUNDS):
+        if not remaining:
+            break
+
+        calls = [("eth_getTransactionReceipt", [h]) for h in remaining]
         results = await rpc_batch(chain_hex, calls)
 
-        new_receipts: dict[str, list[dict]] = {}
-        for tx_hash, result in zip(uncached, results):
+        fetched_this_round = 0
+        for tx_hash, result in zip(remaining, results):
             if result and "logs" in result:
                 receipts[tx_hash] = result["logs"]
-                new_receipts[tx_hash] = result["logs"]
+                all_new[tx_hash] = result["logs"]
                 _receipt_l1[(chain_hex, tx_hash)] = result["logs"]
+                fetched_this_round += 1
 
-        await _store_receipts(chain_hex, new_receipts)
+        remaining = [h for h in remaining if h not in receipts]
+
+        if remaining and attempt < RECEIPT_RETRY_ROUNDS - 1:
+            logger.warning(
+                "Receipt fetch: %d/%d still missing after round %d, retrying in %.0fs",
+                len(remaining), len(tx_hashes), attempt + 1, RECEIPT_RETRY_DELAY,
+            )
+            await asyncio.sleep(RECEIPT_RETRY_DELAY)
+
+    await _store_receipts(chain_hex, all_new)
+
+    if remaining:
+        logger.warning(
+            "Receipt fetch incomplete: %d/%d missing after %d rounds",
+            len(remaining), len(tx_hashes), RECEIPT_RETRY_ROUNDS,
+        )
 
     logger.info(
-        "Fetched %d/%d receipts (%d cached)",
-        len(receipts), len(tx_hashes), len(tx_hashes) - len(uncached),
+        "Fetched %d/%d receipts (%d cached, %d retried)",
+        len(receipts), len(tx_hashes),
+        len(tx_hashes) - len(remaining) - len(all_new),
+        len(all_new),
     )
     return receipts
