@@ -81,10 +81,12 @@ KNOWN_TOKENS: set[str] = WRAPPED_NATIVE | STABLECOINS
 
 ALCHEMY_RPC_URLS: dict[str, str] = {
     "0x1": "https://eth-mainnet.g.alchemy.com/v2",
+    "0x38": "https://bnb-mainnet.g.alchemy.com/v2",
     "0x2105": "https://base-mainnet.g.alchemy.com/v2",
 }
 
 AVG_BLOCK_TIME: dict[str, int] = {
     "0x1": 12,
+    "0x38": 3,
     "0x2105": 2,
 }

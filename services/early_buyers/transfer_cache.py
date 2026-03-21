@@ -31,7 +31,10 @@ def _make_key(pool_address: str, token_address: str, chain: str) -> _CacheKey:
 def _filter_by_window(
     transfers: list[TokenTransfer], from_dt: datetime, to_dt: datetime,
 ) -> list[TokenTransfer]:
-    return [t for t in transfers if from_dt <= t.timestamp_dt <= to_dt]
+    return [
+        t for t in transfers
+        if t.block_timestamp and from_dt <= t.timestamp_dt <= to_dt
+    ]
 
 
 async def get_cached_transfers(

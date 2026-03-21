@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 
 from database import async_session
+from models.constants import AVG_BLOCK_TIME
 from models.receipt_cache import ReceiptCache
 from services.early_buyers.block_lookup import timestamp_to_block
 from services.early_buyers.rpc import rpc_batch, rpc_call
@@ -61,7 +62,12 @@ async def _fetch_asset_transfers(
     return all_transfers
 
 
-def _parse_transfer(t: dict) -> TokenTransfer | None:
+def _parse_transfer(
+    t: dict,
+    chain_hex: str = "",
+    from_block: int = 0,
+    from_ts: float = 0,
+) -> TokenTransfer | None:
     raw_value = t.get("rawContract", {}).get("value")
     if not raw_value or raw_value == "0x":
         return None
@@ -70,7 +76,16 @@ def _parse_transfer(t: dict) -> TokenTransfer | None:
     decimals = t.get("rawContract", {}).get("decimal")
     token_decimals = str(int(decimals, 16)) if decimals else "18"
 
-    block_ts = t.get("metadata", {}).get("blockTimestamp", "")
+    block_ts = (t.get("metadata") or {}).get("blockTimestamp", "")
+    if not block_ts:
+        avg = AVG_BLOCK_TIME.get(chain_hex, 0)
+        block_hex = t.get("blockNum", "0x0")
+        if avg and block_hex and from_ts:
+            block_num = int(block_hex, 16)
+            estimated = from_ts + (block_num - from_block) * avg
+            block_ts = datetime.fromtimestamp(estimated, tz=timezone.utc).isoformat()
+        else:
+            return None
 
     return TokenTransfer(
         transaction_hash=t.get("hash", ""),
@@ -130,8 +145,9 @@ async def fetch_pool_transfers(
     seen: set[str] = set()
     transfers: list[TokenTransfer] = []
 
+    ft = from_dt.timestamp()
     for raw in buy_raw + sell_raw:
-        parsed = _parse_transfer(raw)
+        parsed = _parse_transfer(raw, chain_hex, from_block, ft)
         if not parsed:
             continue
         dedup_key = f"{parsed.transaction_hash}:{parsed.from_address}:{parsed.to_address}:{parsed.value}"
@@ -176,8 +192,9 @@ async def fetch_all_token_transfers(
     seen: set[str] = set()
     transfers: list[TokenTransfer] = []
 
+    ft = from_dt.timestamp()
     for r in raw:
-        parsed = _parse_transfer(r)
+        parsed = _parse_transfer(r, chain_hex, from_block, ft)
         if not parsed:
             continue
         dedup_key = f"{parsed.transaction_hash}:{parsed.from_address}:{parsed.to_address}:{parsed.value}"
@@ -229,8 +246,9 @@ async def fetch_quote_transfers(
     seen: set[str] = set()
     transfers: list[TokenTransfer] = []
 
+    ft = from_dt.timestamp() if from_dt else 0
     for raw in inbound_raw + outbound_raw:
-        parsed = _parse_transfer(raw)
+        parsed = _parse_transfer(raw, chain_hex, from_block, ft)
         if not parsed:
             continue
         dedup_key = f"{parsed.transaction_hash}:{parsed.from_address}:{parsed.to_address}:{parsed.value}"
