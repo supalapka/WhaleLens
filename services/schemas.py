@@ -32,6 +32,7 @@ class WebhookTx(BaseModel):
     hash: str = ""
     fromAddress: str = ""
     toAddress: str = ""
+    input: str = ""
     receiptStatus: str = ""
     triggered_by: list[str] = Field(default_factory=list)
 

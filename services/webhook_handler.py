@@ -117,6 +117,8 @@ async def process_webhook(payload: WebhookPayload) -> dict:
     tracked_wallets = await _fetch_tracked_wallets(all_addresses)
 
     transfers = await _resolve_transfers(payload)
+    if not transfers:
+        logger.info("No ERC20 transfers resolved for chain=%s txs=%d", chain, len(payload.txs))
     tx_metadata = {tx.hash.lower(): tx for tx in payload.txs}
 
     grouped: dict[str, list[ERC20Transfer]] = defaultdict(list)
@@ -152,13 +154,27 @@ async def process_webhook(payload: WebhookPayload) -> dict:
             if is_native_swap:
                 logger.info("Native swap detected for %s", wallet_address[:10])
 
+            selector = tx_meta.input[:10] if tx_meta and len(tx_meta.input) >= 10 else "N/A"
+
             if not sent and not is_native_swap:
+                logger.info(
+                    "Skip tx %s wallet %s: no outgoing tokens (not a buy) [selector=%s]",
+                    tx_hash[:10], wallet_address[:10], selector,
+                )
                 continue
             if not received:
+                logger.info(
+                    "Skip tx %s wallet %s: no incoming tokens (sell/transfer) [selector=%s]",
+                    tx_hash[:10], wallet_address[:10], selector,
+                )
                 continue
 
             bought = [t for t in received if t.contract.lower() not in EXCLUDED_TOKENS]
             if not bought:
+                logger.info(
+                    "Skip tx %s wallet %s: only received stablecoins/WETH [selector=%s]",
+                    tx_hash[:10], wallet_address[:10], selector,
+                )
                 continue
 
             wallet = tracked_wallets.get(wallet_address)
