@@ -14,6 +14,7 @@ from services.notifier.formatter import build_message
 from services.notifier.telegram import send_alert
 from services.schemas import TransactionEvent, AlertData
 from services.scoring.engine import compute_score
+from services.skipped_wallets import increment_skipped_wallet
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +107,7 @@ async def process_transaction(event: TransactionEvent) -> dict | None:
 
     if await _tx_already_processed(tx_hash):
         logger.info("Tx %s already processed, skipping", tx_hash[:10])
+        await increment_skipped_wallet(event.wallet_address)
         return None
 
     security = await check_token_security(token_address, chain)
@@ -114,6 +116,7 @@ async def process_transaction(event: TransactionEvent) -> dict | None:
             "Token %s failed safety: %s | tx: %s",
             token_address, security.failed_checks, tx_hash,
         )
+        await increment_skipped_wallet(event.wallet_address)
         return None
 
     if not security:
@@ -122,11 +125,13 @@ async def process_transaction(event: TransactionEvent) -> dict | None:
     if await _is_duplicate_alert(token_address):
         logger.info("Token %s alerted within cooldown (%dh), skipping | tx: %s",
                      token_address, settings.alert_cooldown_hours, tx_hash)
+        await increment_skipped_wallet(event.wallet_address)
         return None
 
     token_data = await get_token_data(token_address)
     if not token_data:
         logger.warning("DexScreener unavailable for %s, skipping", token_address)
+        await increment_skipped_wallet(event.wallet_address)
         return None
 
     if event.buy_amount_usd is None:

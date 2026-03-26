@@ -9,6 +9,7 @@ from models.wallet import Wallet
 from services.moralis import decode_logs_to_transfers, fetch_tx_logs
 from services.queue import tx_queue
 from services.schemas import ERC20Transfer, TransactionEvent, WebhookPayload
+from services.skipped_wallets import increment_skipped_wallet
 
 logger = logging.getLogger(__name__)
 
@@ -161,12 +162,14 @@ async def process_webhook(payload: WebhookPayload) -> dict:
                     "Skip tx %s wallet %s: no outgoing tokens (not a buy) [selector=%s]",
                     tx_hash[:10], wallet_address[:10], selector,
                 )
+                await increment_skipped_wallet(wallet_address)
                 continue
             if not received:
                 logger.info(
                     "Skip tx %s wallet %s: no incoming tokens (sell/transfer) [selector=%s]",
                     tx_hash[:10], wallet_address[:10], selector,
                 )
+                await increment_skipped_wallet(wallet_address)
                 continue
 
             bought = [t for t in received if t.contract.lower() not in EXCLUDED_TOKENS]
@@ -175,11 +178,13 @@ async def process_webhook(payload: WebhookPayload) -> dict:
                     "Skip tx %s wallet %s: only received stablecoins/WETH [selector=%s]",
                     tx_hash[:10], wallet_address[:10], selector,
                 )
+                await increment_skipped_wallet(wallet_address)
                 continue
 
             wallet = tracked_wallets.get(wallet_address)
             if not wallet:
                 skipped.append(wallet_address)
+                await increment_skipped_wallet(wallet_address)
                 continue
 
             buy_amount_usd = _sum_stablecoin_usd(sent) if not is_native_swap else None
