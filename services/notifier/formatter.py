@@ -47,7 +47,23 @@ def make_bar(got: float, max_: float, width: int = 10) -> str:
     return "\u2588" * filled + "\u2591" * (width - filled)
 
 
-from services.schemas import AlertData
+from services.schemas import AlertData, TransactionEvent
+
+
+_CHAIN_SLUGS = {k: v["dexscreener"] for k, v in CHAIN_INFO.items()}
+
+
+def build_vip_message(event: TransactionEvent) -> str:
+    token = event.token_symbol or event.token_address[:6] + "..." + event.token_address[-4:]
+    chain_slug = _CHAIN_SLUGS.get(event.chain, "ethereum")
+    return (
+        f"\U0001f40b *VIP WALLET* \u2014 {event.chain}\n"
+        f"\n"
+        f"\u00b7 *{event.wallet_label}* bought *{token}*\n"
+        f"  `{event.token_address}`\n"
+        f"\n"
+        f"\U0001f517 [DexScreener](https://dexscreener.com/{chain_slug}/{event.token_address})"
+    )
 
 
 def build_message(alert: AlertData) -> str:

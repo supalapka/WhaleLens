@@ -55,6 +55,7 @@ class WalletCreate(BaseModel):
     address: str
     label: str | None = None
     category: str | None = None
+    always_alert: bool = False
 
     @field_validator("address")
     @classmethod
@@ -66,6 +67,7 @@ class WalletCreate(BaseModel):
 
 class TransactionEvent(BaseModel):
     token_address: str
+    token_symbol: str = ""
     chain: str
     wallet_address: str
     wallet_id: int
@@ -74,6 +76,7 @@ class TransactionEvent(BaseModel):
     token_amount: float
     tx_hash: str
     buy_amount_usd: float | None = None
+    always_alert: bool = False
 
 
 class TokenData(BaseModel):

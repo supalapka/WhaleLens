@@ -15,5 +15,6 @@ class Wallet(Base):
     category: Mapped[str | None] = mapped_column(String(20))
     credibility_score: Mapped[float] = mapped_column(Float, server_default="0.5")
     is_active: Mapped[bool] = mapped_column(Boolean, server_default="true")
+    always_alert: Mapped[bool] = mapped_column(Boolean, server_default="false")
     added_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())

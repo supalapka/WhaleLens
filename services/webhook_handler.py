@@ -192,6 +192,7 @@ async def process_webhook(payload: WebhookPayload) -> dict:
 
             event = TransactionEvent(
                 token_address=bought_token.contract,
+                token_symbol=bought_token.tokenSymbol,
                 chain=chain,
                 wallet_address=wallet_address,
                 wallet_id=wallet.id,
@@ -200,6 +201,7 @@ async def process_webhook(payload: WebhookPayload) -> dict:
                 token_amount=float(bought_token.valueWithDecimals),
                 tx_hash=tx_hash,
                 buy_amount_usd=buy_amount_usd,
+                always_alert=wallet.always_alert,
             )
             await tx_queue.put(event)
             enqueued += 1

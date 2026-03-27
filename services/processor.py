@@ -10,7 +10,7 @@ from models.alert import Alert
 from models.transaction import Transaction
 from services.checkers.dexscreener import get_token_data
 from services.checkers.token_security import check_token_security
-from services.notifier.formatter import build_message
+from services.notifier.formatter import build_message, build_vip_message
 from services.notifier.telegram import send_alert
 from services.schemas import TransactionEvent, AlertData
 from services.scoring.engine import compute_score
@@ -101,6 +101,11 @@ async def _tx_already_processed(tx_hash: str) -> bool:
 
 
 async def process_transaction(event: TransactionEvent) -> dict | None:
+    if event.always_alert:
+        text = build_vip_message(event)
+        await send_alert(text)
+        return None
+
     token_address = event.token_address
     chain = event.chain
     tx_hash = event.tx_hash

@@ -17,6 +17,7 @@ async def add_wallet(body: WalletCreate):
         address=body.address,
         label=body.label,
         category=body.category,
+        always_alert=body.always_alert,
     )
     try:
         async with async_session() as session:
