@@ -47,6 +47,8 @@ CHAINS: list[ChainConfig] = [
 
 CHAIN_MAP: dict[str, str] = {c.hex_id: c.short_name for c in CHAINS}
 
+CHAIN_BY_SHORT_NAME: dict[str, ChainConfig] = {c.short_name: c for c in CHAINS}
+
 FACTORY_BY_CHAIN: dict[str, list[str]] = {
     c.hex_id: c.factories for c in CHAINS if c.factories
 }
