@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import String, Float, ForeignKey, func
+from sqlalchemy import Boolean, String, Float, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from models import Base
@@ -17,4 +17,5 @@ class Transaction(Base):
     usd_amount: Mapped[float | None] = mapped_column(Float)
     tx_hash: Mapped[str] = mapped_column(String(66), unique=True)
     score: Mapped[float | None] = mapped_column(Float)
+    is_profitable: Mapped[bool | None] = mapped_column(Boolean, default=None)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())

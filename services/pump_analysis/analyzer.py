@@ -4,7 +4,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from database import async_session
 from models.constants import CHAIN_BY_SHORT_NAME
@@ -203,6 +203,7 @@ async def run_pump_analysis() -> PumpAnalysisResponse:
     )
 
     await _credit_wallets(results)
+    await _mark_profitable(results)
 
     return PumpAnalysisResponse(
         total_bsc_transactions=len(rows),
@@ -251,3 +252,20 @@ async def _credit_wallets(results: list[PumpResult]) -> None:
         "Credited %d wallet+token pairs (%d already existed)",
         len(new_pairs), len(already_credited),
     )
+
+
+async def _mark_profitable(results: list[PumpResult]) -> None:
+    if not results:
+        return
+
+    tx_ids = [r.tx_id for r in results]
+
+    async with async_session() as session:
+        await session.execute(
+            update(Transaction)
+            .where(Transaction.id.in_(tx_ids))
+            .values(is_profitable=True)
+        )
+        await session.commit()
+
+    logger.info("Marked %d transactions as profitable", len(tx_ids))
