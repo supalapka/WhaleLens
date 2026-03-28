@@ -8,6 +8,7 @@ from sqlalchemy import select
 
 from database import async_session
 from models.constants import CHAIN_BY_SHORT_NAME
+from models.pump_credit import PumpCredit
 from models.transaction import Transaction
 from models.wallet import Wallet
 from services.checkers.dexscreener import get_token_pairs
@@ -201,9 +202,52 @@ async def run_pump_analysis() -> PumpAnalysisResponse:
         len(results), len(rows),
     )
 
+    await _credit_wallets(results)
+
     return PumpAnalysisResponse(
         total_bsc_transactions=len(rows),
         unique_tokens_scanned=len(unique_tokens),
         tokens_skipped=tokens_skipped,
         results=results,
+    )
+
+
+async def _credit_wallets(results: list[PumpResult]) -> None:
+    if not results:
+        return
+
+    unique_pairs: dict[tuple[int, str], None] = {}
+    for r in results:
+        unique_pairs.setdefault((r.wallet_id, r.token_address), None)
+
+    async with async_session() as session:
+        existing = await session.execute(
+            select(PumpCredit.wallet_id, PumpCredit.token_address).where(
+                PumpCredit.wallet_id.in_([wid for wid, _ in unique_pairs]),
+            )
+        )
+        already_credited = {(row.wallet_id, row.token_address) for row in existing.all()}
+
+        new_pairs = [p for p in unique_pairs if p not in already_credited]
+        if not new_pairs:
+            logger.info("All wallet+token pairs already credited, skipping")
+            return
+
+        wallet_ids = {wid for wid, _ in new_pairs}
+        wal_result = await session.execute(
+            select(Wallet).where(Wallet.id.in_(wallet_ids))
+        )
+        wallets = {w.id: w for w in wal_result.scalars().all()}
+
+        for wallet_id, token_address in new_pairs:
+            wallet = wallets.get(wallet_id)
+            if wallet:
+                wallet.credibility_score += 1
+            session.add(PumpCredit(wallet_id=wallet_id, token_address=token_address))
+
+        await session.commit()
+
+    logger.info(
+        "Credited %d wallet+token pairs (%d already existed)",
+        len(new_pairs), len(already_credited),
     )

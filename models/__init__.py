@@ -13,3 +13,4 @@ from models.receipt_cache import ReceiptCache
 from models.wallet_detection import WalletDetection
 from models.skipped_wallet import SkippedWallet
 from models.ohlcv_cache import OhlcvCache
+from models.pump_credit import PumpCredit
