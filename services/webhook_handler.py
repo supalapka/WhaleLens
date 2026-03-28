@@ -140,7 +140,11 @@ async def process_webhook(payload: WebhookPayload) -> dict:
             if not sent or not received:
                 if tx_meta and tx_meta.fromAddress.lower() == wallet_address:
                     router = tx_meta.toAddress.lower()
-                    sent, received = _detect_router_swap(tx_transfers, router, wallet_address)
+                    new_sent, new_received = _detect_router_swap(tx_transfers, router, wallet_address)
+                    if not sent:
+                        sent = new_sent
+                    if not received:
+                        received = new_received
                     logger.info(
                         "Router swap for %s via %s: sent=%d received=%d",
                         wallet_address[:10], router[:10], len(sent), len(received),
