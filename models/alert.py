@@ -10,7 +10,7 @@ class Alert(Base):
     __tablename__ = "alerts"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    token_address: Mapped[str] = mapped_column(String(42), nullable=False)
+    token_address: Mapped[str] = mapped_column(String(64), nullable=False)
     token_symbol: Mapped[str | None] = mapped_column(String(20))
     chain: Mapped[str | None] = mapped_column(String(10))
     score: Mapped[float | None] = mapped_column(Float)
