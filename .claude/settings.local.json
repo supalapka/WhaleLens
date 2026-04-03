@@ -14,7 +14,10 @@
       "WebSearch",
       "WebFetch(domain:github.com)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "WebFetch(domain:www.brytelands.xyz)",
+      "WebFetch(domain:www.npmjs.com)",
+      "Bash(.venv/Scripts/alembic upgrade:*)"
     ]
   }
 }

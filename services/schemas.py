@@ -4,6 +4,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 _ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
+_SOLANA_ADDRESS_RE = re.compile(r"^[1-9A-HJ-NP-Za-km-z]{32,44}$")
 
 
 class ERC20Transfer(BaseModel):
@@ -60,9 +61,36 @@ class WalletCreate(BaseModel):
     @field_validator("address")
     @classmethod
     def validate_address(cls, v: str) -> str:
-        if not _ADDRESS_RE.match(v):
-            raise ValueError("invalid EVM address")
-        return v.lower()
+        if _ADDRESS_RE.match(v):
+            return v.lower()
+        if _SOLANA_ADDRESS_RE.match(v):
+            return v
+        raise ValueError("invalid address")
+
+
+class HeliusTokenTransfer(BaseModel):
+    mint: str = ""
+    fromUserAccount: str = ""
+    toUserAccount: str = ""
+    tokenAmount: float = 0.0
+
+    @field_validator("tokenAmount", mode="before")
+    @classmethod
+    def coerce_amount(cls, v: object) -> float:
+        return float(v) if v else 0.0
+
+
+class HeliusNativeTransfer(BaseModel):
+    fromUserAccount: str = ""
+    toUserAccount: str = ""
+    amount: int = 0
+
+
+class HeliusTx(BaseModel):
+    signature: str = ""
+    timestamp: int = 0
+    tokenTransfers: list[HeliusTokenTransfer] = []
+    nativeTransfers: list[HeliusNativeTransfer] = []
 
 
 class TransactionEvent(BaseModel):

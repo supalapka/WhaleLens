@@ -5,6 +5,7 @@ from sqlalchemy.exc import IntegrityError
 
 from database import async_session
 from models.wallet import Wallet
+from services.helius_webhook import subscribe_solana_addresses
 from services.moralis import create_stream, subscribe_addresses
 from services.schemas import WalletCreate
 
@@ -48,9 +49,20 @@ async def wallets_subscribe():
         )
         addresses = list(result.scalars().all())
 
-    if not addresses:
-        return {"status": "ok", "subscribed": 0, "stream_id": None}
+    evm_addresses = [a for a in addresses if a.startswith("0x")]
+    solana_addresses = [a for a in addresses if not a.startswith("0x")]
 
-    stream_id = await create_stream()
-    await subscribe_addresses(stream_id, addresses)
-    return {"status": "ok", "subscribed": len(addresses), "stream_id": stream_id}
+    stream_id = None
+    if evm_addresses:
+        stream_id = await create_stream()
+        await subscribe_addresses(stream_id, evm_addresses)
+
+    if solana_addresses:
+        await subscribe_solana_addresses(solana_addresses)
+
+    return {
+        "status": "ok",
+        "subscribed_evm": len(evm_addresses),
+        "subscribed_solana": len(solana_addresses),
+        "stream_id": stream_id,
+    }

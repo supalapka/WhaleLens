@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     solana_rpc_url: str = "https://api.mainnet-beta.solana.com"
     solana_rpc_api_key: str = ""
     helius_api_key: str = ""
+    helius_webhook_url: str = ""
+    helius_webhook_id: str = ""
+    helius_webhook_secret: str = ""
 
     model_config = {"env_file": BASE_DIR / ".env", "env_file_encoding": "utf-8"}
 
