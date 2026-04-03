@@ -10,7 +10,7 @@ class Wallet(Base):
     __tablename__ = "wallets"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    address: Mapped[str] = mapped_column(String(42), unique=True, nullable=False)
+    address: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     label: Mapped[str | None] = mapped_column(String(100))
     category: Mapped[str | None] = mapped_column(String(20))
     credibility_score: Mapped[float] = mapped_column(Float, server_default="0.5")

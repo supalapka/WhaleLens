@@ -11,5 +11,5 @@ class WalletDetection(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    wallet_address: Mapped[str] = mapped_column(String(42), nullable=False)
-    token_address: Mapped[str] = mapped_column(String(42), nullable=False)
+    wallet_address: Mapped[str] = mapped_column(String(64), nullable=False)
+    token_address: Mapped[str] = mapped_column(String(64), nullable=False)

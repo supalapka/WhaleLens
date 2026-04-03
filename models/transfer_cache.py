@@ -13,8 +13,8 @@ class TransferCache(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    pool_address: Mapped[str] = mapped_column(String(42), nullable=False)
-    token_address: Mapped[str] = mapped_column(String(42), nullable=False)
+    pool_address: Mapped[str] = mapped_column(String(64), nullable=False)
+    token_address: Mapped[str] = mapped_column(String(64), nullable=False)
     chain: Mapped[str] = mapped_column(String(10), nullable=False)
     from_dt: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     to_dt: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

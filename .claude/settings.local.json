@@ -4,7 +4,17 @@
       "Bash(python:*)",
       "Bash(alembic upgrade:*)",
       "Bash(source .venv/Scripts/activate)",
-      "Bash(source .venv/bin/activate)"
+      "Bash(source .venv/bin/activate)",
+      "Bash(grep -r \"select\\\\|query\\\\|count\\\\|aggregate\\\\|group_by\" /d/PyCharmProjects/WhaleLens --include=\"*.py\" ! -path \"*/.venv/*\" ! -path \"*/__pycache__/*\" ! -path \"*/migrations/*\")",
+      "WebFetch(domain:api.dexscreener.com)",
+      "Bash(alembic stamp:*)",
+      "Bash(curl:*)",
+      "WebFetch(domain:docs.helius.dev)",
+      "WebFetch(domain:www.helius.dev)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ]
   }
 }
