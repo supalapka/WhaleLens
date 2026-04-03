@@ -57,6 +57,8 @@ _CHAIN_ALIASES: dict[str, str] = {
     "arb": "arbitrum",
     "0xa4b1": "arbitrum",
     "42161": "arbitrum",
+    "solana": "solana",
+    "sol": "solana",
 }
 
 
@@ -69,7 +71,8 @@ class EarlyBuyerRequest(BaseModel):
     @field_validator("token_address")
     @classmethod
     def normalize_address(cls, v: str) -> str:
-        return v.strip().lower()
+        v = v.strip()
+        return v.lower() if v.startswith("0x") else v
 
     @field_validator("chain")
     @classmethod

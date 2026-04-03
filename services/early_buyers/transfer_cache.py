@@ -24,8 +24,12 @@ class _CacheEntry:
 _l1: dict[_CacheKey, _CacheEntry] = {}
 
 
+def _normalize_addr(addr: str) -> str:
+    return addr.lower() if addr.startswith("0x") else addr
+
+
 def _make_key(pool_address: str, token_address: str, chain: str) -> _CacheKey:
-    return pool_address.lower(), token_address.lower(), chain
+    return _normalize_addr(pool_address), _normalize_addr(token_address), chain
 
 
 def _filter_by_window(
@@ -57,8 +61,8 @@ async def get_cached_transfers(
         stmt = (
             select(TransferCache)
             .where(
-                TransferCache.pool_address == pool_address.lower(),
-                TransferCache.token_address == token_address.lower(),
+                TransferCache.pool_address == _normalize_addr(pool_address),
+                TransferCache.token_address == _normalize_addr(token_address),
                 TransferCache.chain == chain,
                 TransferCache.from_dt <= from_dt,
                 TransferCache.to_dt >= to_dt,
@@ -87,14 +91,16 @@ async def store_transfers(
     to_dt: datetime,
     transfers: list[TokenTransfer],
 ) -> None:
+    if not transfers:
+        return
     key = _make_key(pool_address, token_address, chain)
-    pool_lower = pool_address.lower()
-    token_lower = token_address.lower()
+    pool_norm = _normalize_addr(pool_address)
+    token_norm = _normalize_addr(token_address)
     transfers_json = [t.model_dump() for t in transfers]
 
     stmt = insert(TransferCache).values(
-        pool_address=pool_lower,
-        token_address=token_lower,
+        pool_address=pool_norm,
+        token_address=token_norm,
         chain=chain,
         from_dt=from_dt,
         to_dt=to_dt,

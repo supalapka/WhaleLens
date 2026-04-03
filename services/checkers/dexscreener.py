@@ -78,7 +78,16 @@ async def get_token_data(token_address: str) -> TokenData | None:
 
 
 _EVM_ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
+_SOLANA_ADDRESS_RE = re.compile(r"^[1-9A-HJ-NP-Za-km-z]{32,44}$")
 MAX_POOLS = 20
+
+
+def _is_valid_address(addr: str) -> bool:
+    return bool(_EVM_ADDRESS_RE.match(addr) or _SOLANA_ADDRESS_RE.match(addr))
+
+
+def _normalize_address(addr: str, chain_id: str) -> str:
+    return addr if chain_id == "solana" else addr.lower()
 
 
 async def get_token_pairs(token_address: str) -> list[dict]:
@@ -100,14 +109,15 @@ async def get_token_pairs(token_address: str) -> list[dict]:
     result = []
     for p in pairs:
         addr = p.get("pairAddress", "")
-        if not _EVM_ADDRESS_RE.match(addr):
+        if not _is_valid_address(addr):
             continue
+        chain_id = p.get("chainId", "")
         result.append({
-            "pair_address": addr.lower(),
-            "chain_id": p.get("chainId", ""),
-            "base_token": p.get("baseToken", {}).get("address", "").lower(),
+            "pair_address": _normalize_address(addr, chain_id),
+            "chain_id": chain_id,
+            "base_token": _normalize_address(p.get("baseToken", {}).get("address", ""), chain_id),
             "base_symbol": p.get("baseToken", {}).get("symbol", "???"),
-            "quote_token": p.get("quoteToken", {}).get("address", "").lower(),
+            "quote_token": _normalize_address(p.get("quoteToken", {}).get("address", ""), chain_id),
             "price_usd": float(p.get("priceUsd") or 0),
             "price_native": float(p.get("priceNative") or 0),
         })

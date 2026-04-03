@@ -5,29 +5,24 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from models.constants import (
-    ALCHEMY_RPC_URLS,
     DEXSCREENER_TO_CHAIN_HEX,
     STABLECOINS,
     WRAPPED_NATIVE,
     WRAPPED_NATIVE_BY_CHAIN,
 )
 from services.checkers.dexscreener import get_token_pairs
-from services.early_buyers.block_lookup import timestamp_to_block
 from services.early_buyers.classifier import (
-    QuoteTokenConfig,
     aggregate_wallets,
     apply_filters,
     assign_swap_prices,
     classify_transfers,
-    price_from_receipts,
 )
 from services.early_buyers.exceptions import (
     InsufficientPriceDataError,
     NoPairsFoundError,
-    UnsupportedChainError,
 )
-from services.early_buyers.schemas import ClassifiedSwap, EarlyBuyerRecord, EarlyBuyerRequest, EarlyBuyerResponse, PricedSwap, TokenTransfer
-from services.early_buyers.transfers import fetch_all_token_transfers, fetch_quote_transfers, fetch_tx_receipts
+from services.early_buyers.gateway import ChainGateway, create_gateway
+from services.early_buyers.schemas import EarlyBuyerRecord, EarlyBuyerRequest, EarlyBuyerResponse, PricedSwap, TokenTransfer
 
 logger = logging.getLogger(__name__)
 
@@ -35,11 +30,11 @@ MIN_POOL_PEERS = 20
 QUOTE_FETCH_CONCURRENCY = 10
 MAX_QUOTE_PAGES = 50
 DISCOVERED_QUOTE_MAX_PAGES = 10
-MAX_RECEIPT_FETCHES = 10000
 
 _IGNORED_ADDRESSES: set[str] = {
     "0x0000000000000000000000000000000000000000",
     "0x000000000000000000000000000000000000dead",
+    "11111111111111111111111111111111",
 }
 
 
@@ -63,22 +58,11 @@ def _resolve_quote_to_usd(quote_token: str, pair: dict) -> float:
     )
 
 
-def _resolve_chain(pairs: list[dict], request_chain: str | None) -> tuple[str, str]:
-    chain_id = pairs[0]["chain_id"]
-    chain_hex = DEXSCREENER_TO_CHAIN_HEX.get(chain_id)
-    if request_chain:
-        chain_hex = DEXSCREENER_TO_CHAIN_HEX.get(request_chain, request_chain)
-        chain_id = request_chain
-
-    if not chain_hex:
+def _resolve_chain(pairs: list[dict], request_chain: str | None) -> str:
+    chain_id = request_chain or pairs[0]["chain_id"]
+    if chain_id not in DEXSCREENER_TO_CHAIN_HEX:
         raise NoPairsFoundError(f"Unsupported chain: {chain_id}")
-
-    if chain_hex not in ALCHEMY_RPC_URLS:
-        raise UnsupportedChainError(
-            f"Chain {chain_hex} is not supported by RPC. "
-            f"Supported: {', '.join(ALCHEMY_RPC_URLS)}"
-        )
-    return chain_hex, chain_id
+    return chain_id
 
 
 def _resolve_dex_pools(pairs: list[dict], chain_id: str) -> list[_PoolInfo]:
@@ -132,71 +116,32 @@ def _dedup_priced(swaps: list[PricedSwap]) -> list[PricedSwap]:
     return result
 
 
-def _collect_tx_hashes(
-    swaps: list[ClassifiedSwap], limit: int,
-) -> list[str]:
-    by_amount: dict[str, float] = defaultdict(float)
-    for s in swaps:
-        by_amount[s.tx_hash] += s.token_amount
-    ranked = sorted(by_amount, key=by_amount.get, reverse=True)
-    return ranked[:limit]
-
-
-def _build_quote_configs(
-    chain_hex: str,
-    dex_quote_to_usd: float,
-) -> list[QuoteTokenConfig]:
-    configs: list[QuoteTokenConfig] = []
-    wrapped = WRAPPED_NATIVE_BY_CHAIN.get(chain_hex)
-    if wrapped:
-        configs.append(QuoteTokenConfig(address=wrapped, decimals=18, to_usd=dex_quote_to_usd))
-    for stable, decimals in STABLECOINS.items():
-        configs.append(QuoteTokenConfig(address=stable, decimals=decimals, to_usd=1.0))
-    return configs
-
-
-async def _price_via_receipts(
-    unpriced_buys: list[ClassifiedSwap],
-    unpriced_sells: list[ClassifiedSwap],
-    chain_hex: str,
-    quote_to_usd: float,
-) -> tuple[list[PricedSwap], list[PricedSwap]]:
-    all_unpriced = unpriced_buys + unpriced_sells
-    tx_hashes = _collect_tx_hashes(all_unpriced, MAX_RECEIPT_FETCHES)
-    if not tx_hashes:
-        return [], []
-
-    logger.info("Fetching %d receipts for unpriced swaps", len(tx_hashes))
-    receipt_logs = await fetch_tx_receipts(chain_hex, tx_hashes)
-
-    configs = _build_quote_configs(chain_hex, quote_to_usd)
-    receipt_buys = price_from_receipts(unpriced_buys, receipt_logs, configs, is_buy=True)
-    receipt_sells = price_from_receipts(unpriced_sells, receipt_logs, configs, is_buy=False)
-    return receipt_buys, receipt_sells
-
-
 async def _fetch_and_price(
     dex_pools: list[_PoolInfo],
     token_address: str,
-    chain_hex: str,
-    from_date_iso: str,
-    to_date_iso: str,
+    chain_id: str,
+    gateway: ChainGateway,
+    from_dt: datetime,
+    to_dt: datetime,
     from_block: int,
     to_block: int,
 ) -> tuple[list[PricedSwap], list[PricedSwap]]:
-    all_transfers = await fetch_all_token_transfers(
-        token_address, chain_hex, from_date_iso, to_date_iso,
-        from_block, to_block,
+    pool_hints = [p.address for p in dex_pools]
+    all_transfers = await gateway.fetch_token_transfers(
+        token_address, from_block, to_block, from_dt, to_dt,
+        pool_hints=pool_hints,
     )
     if not all_transfers:
         return [], []
 
     discovered = _discover_pools(all_transfers)
-    dex_addresses = {p.address for p in dex_pools}
+    dex_addresses = set(pool_hints)
     new_pool_addresses = discovered - dex_addresses
     all_pool_addresses = dex_addresses | new_pool_addresses
 
-    wrapped_native = WRAPPED_NATIVE_BY_CHAIN.get(chain_hex)
+    wrapped_native = WRAPPED_NATIVE_BY_CHAIN.get(
+        DEXSCREENER_TO_CHAIN_HEX.get(chain_id, chain_id),
+    )
     native_to_usd = next(
         (p.quote_to_usd for p in dex_pools if p.quote_token == wrapped_native),
         None,
@@ -220,16 +165,14 @@ async def _fetch_and_price(
     )
 
     sem = asyncio.Semaphore(QUOTE_FETCH_CONCURRENCY)
-    cache_from_dt = datetime.fromisoformat(from_date_iso)
-    cache_to_dt = datetime.fromisoformat(to_date_iso)
 
     async def _fetch_quotes(pool: _PoolInfo, max_pages: int) -> list[TokenTransfer]:
         async with sem:
-            return await fetch_quote_transfers(
-                pool.address, pool.quote_token, chain_hex,
+            return await gateway.fetch_pool_quote_transfers(
+                pool.address, pool.quote_token,
                 from_block, to_block,
                 max_pages=max_pages,
-                from_dt=cache_from_dt, to_dt=cache_to_dt,
+                from_dt=from_dt, to_dt=to_dt,
             )
 
     all_pools = list(dex_pools) + list(discovered_pools)
@@ -261,14 +204,14 @@ async def _fetch_and_price(
 
     if unpriced_buys or unpriced_sells:
         native_usd = native_to_usd or (dex_pools[0].quote_to_usd if dex_pools else 0.0)
-        receipt_buys, receipt_sells = await _price_via_receipts(
-            unpriced_buys, unpriced_sells, chain_hex, native_usd,
+        extra_buys, extra_sells = await gateway.price_remaining_swaps(
+            unpriced_buys, unpriced_sells, native_usd,
         )
-        priced_buys.extend(receipt_buys)
-        priced_sells.extend(receipt_sells)
+        priced_buys.extend(extra_buys)
+        priced_sells.extend(extra_sells)
         logger.info(
-            "Receipt pricing: +%d buys, +%d sells | Total: %d/%d buys, %d/%d sells",
-            len(receipt_buys), len(receipt_sells),
+            "Fallback pricing: +%d buys, +%d sells | Total: %d/%d buys, %d/%d sells",
+            len(extra_buys), len(extra_sells),
             len(priced_buys), len(buys),
             len(priced_sells), len(sells),
         )
@@ -283,7 +226,8 @@ async def detect_early_buyers(request: EarlyBuyerRequest) -> EarlyBuyerResponse:
             f"No DEX pairs found for {request.token_address}"
         )
 
-    chain_hex, chain_id = _resolve_chain(pairs, request.chain)
+    chain_id = _resolve_chain(pairs, request.chain)
+    gateway = create_gateway(chain_id)
     token_symbol = pairs[0].get("base_symbol", "???")
     dex_pools = _resolve_dex_pools(pairs, chain_id)
 
@@ -297,14 +241,14 @@ async def detect_early_buyers(request: EarlyBuyerRequest) -> EarlyBuyerResponse:
     to_date = datetime.fromtimestamp(request.pump_peak, tz=timezone.utc)
 
     from_block, to_block = await asyncio.gather(
-        timestamp_to_block(chain_hex, request.pump_start),
-        timestamp_to_block(chain_hex, request.pump_peak),
+        gateway.resolve_block(request.pump_start),
+        gateway.resolve_block(request.pump_peak),
     )
     logger.info("Block range: %d → %d", from_block, to_block)
 
     priced_buys, priced_sells = await _fetch_and_price(
-        dex_pools, request.token_address, chain_hex,
-        from_date.isoformat(), to_date.isoformat(),
+        dex_pools, request.token_address, chain_id, gateway,
+        from_date, to_date,
         from_block, to_block,
     )
 
@@ -352,20 +296,21 @@ async def top_wallets(request: EarlyBuyerRequest, limit: int = 10) -> list[Early
             f"No DEX pairs found for {request.token_address}"
         )
 
-    chain_hex, chain_id = _resolve_chain(pairs, request.chain)
+    chain_id = _resolve_chain(pairs, request.chain)
+    gateway = create_gateway(chain_id)
     dex_pools = _resolve_dex_pools(pairs, chain_id)
 
     from_date = datetime.fromtimestamp(request.pump_start, tz=timezone.utc)
     to_date = datetime.fromtimestamp(request.pump_peak, tz=timezone.utc)
 
     from_block, to_block = await asyncio.gather(
-        timestamp_to_block(chain_hex, request.pump_start),
-        timestamp_to_block(chain_hex, request.pump_peak),
+        gateway.resolve_block(request.pump_start),
+        gateway.resolve_block(request.pump_peak),
     )
 
     priced_buys, priced_sells = await _fetch_and_price(
-        dex_pools, request.token_address, chain_hex,
-        from_date.isoformat(), to_date.isoformat(),
+        dex_pools, request.token_address, chain_id, gateway,
+        from_date, to_date,
         from_block, to_block,
     )
 

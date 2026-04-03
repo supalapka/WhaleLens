@@ -2,6 +2,7 @@ import logging
 
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from database import async_session
 from models.wallet import Wallet
@@ -60,16 +61,17 @@ async def _save_wallets(response: EarlyBuyerResponse) -> None:
         )
         existing = {w.address: w for w in wal_result.scalars().all()}
 
+        new_wallet_addresses = [a for a in new_addresses if a not in existing]
+        if new_wallet_addresses:
+            await session.execute(
+                pg_insert(Wallet)
+                .values([{"address": a, "label": label, "category": "early_buyer"} for a in new_wallet_addresses])
+                .on_conflict_do_nothing(index_elements=["address"])
+            )
+
         for address in new_addresses:
-            wallet = existing.get(address)
-            if wallet:
-                wallet.credibility_score += 1
-            else:
-                session.add(Wallet(
-                    address=address,
-                    label=label,
-                    category="early_buyer",
-                ))
+            if address in existing:
+                existing[address].credibility_score += 1
             session.add(WalletDetection(
                 wallet_address=address,
                 token_address=token,

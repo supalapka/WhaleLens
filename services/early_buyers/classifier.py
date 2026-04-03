@@ -20,9 +20,9 @@ class QuoteTokenConfig:
     decimals: int
     to_usd: float
 
-MIN_BUY_USD = 80.0
+MIN_BUY_USD = 100.0
 MIN_SOLD_RATIO_PCT = 1.0
-MIN_PROFIT_PCT = 300.0
+MIN_PROFIT_PCT = 1000.0
 
 
 def classify_transfers(

@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from typing import Protocol
 
 from models.constants import ALCHEMY_RPC_URLS, DEXSCREENER_TO_CHAIN_HEX
 from services.early_buyers.exceptions import UnsupportedChainError
 from services.early_buyers.schemas import ClassifiedSwap, PricedSwap, TokenTransfer
+
+logger = logging.getLogger(__name__)
 
 
 class ChainGateway(Protocol):
@@ -45,6 +48,15 @@ SOLANA_CHAIN_ID = "solana"
 
 def create_gateway(chain_id: str) -> ChainGateway:
     if chain_id == SOLANA_CHAIN_ID:
+        from config import settings
+
+        if settings.helius_api_key:
+            logger.info("Solana gateway: Helius indexed path active")
+            from services.early_buyers.solana_indexed_gateway import SolanaIndexedGateway
+
+            return SolanaIndexedGateway()
+
+        logger.warning("Solana gateway: falling back to RPC (set HELIUS_API_KEY to use indexed path)")
         from services.early_buyers.solana_gateway import SolanaGateway
 
         return SolanaGateway()
