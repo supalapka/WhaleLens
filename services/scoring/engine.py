@@ -47,6 +47,8 @@ def score_time_gap(hours: float, whale_count: int) -> float:
 
 
 def score_buy_pressure(buy_usd: float, liquidity_usd: float) -> float:
+    if not liquidity_usd:
+        return 2
     ratio = buy_usd / liquidity_usd
     if ratio < 0.01:
         return 2

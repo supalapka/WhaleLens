@@ -19,12 +19,16 @@ from services.skipped_wallets import increment_skipped_wallet
 logger = logging.getLogger(__name__)
 
 
+def _norm_addr(addr: str) -> str:
+    return addr.lower() if addr.startswith("0x") else addr
+
+
 async def _is_duplicate_alert(token_address: str) -> bool:
     async with async_session() as session:
         cutoff = func.now() - timedelta(hours=settings.alert_cooldown_hours)
         result = await session.execute(
             select(Alert.id)
-            .where(Alert.token_address == token_address.lower())
+            .where(Alert.token_address == _norm_addr(token_address))
             .where(Alert.sent_at >= cutoff)
             .limit(1)
         )
@@ -37,7 +41,7 @@ async def _get_whale_factors(token_address: str) -> dict:
 
         whale_count_result = await session.execute(
             select(func.count(func.distinct(Transaction.wallet_id)))
-            .where(Transaction.token_address == token_address.lower())
+            .where(Transaction.token_address == _norm_addr(token_address))
             .where(Transaction.created_at >= seven_days_ago)
         )
         whale_count = whale_count_result.scalar() or 0
@@ -47,7 +51,7 @@ async def _get_whale_factors(token_address: str) -> dict:
             select(
                 func.extract("epoch", func.max(Transaction.created_at) - func.min(Transaction.created_at)) / 3600
             )
-            .where(Transaction.token_address == token_address.lower())
+            .where(Transaction.token_address == _norm_addr(token_address))
             .where(Transaction.created_at >= seven_days_ago)
         )
         time_gap_hours = time_gap_result.scalar() or 0
@@ -63,7 +67,7 @@ async def _save_transaction(event: TransactionEvent, score: float, symbol: str) 
         async with async_session() as session:
             tx = Transaction(
                 wallet_id=event.wallet_id,
-                token_address=event.token_address.lower(),
+                token_address=_norm_addr(event.token_address),
                 token_symbol=symbol,
                 chain=event.chain,
                 usd_amount=event.buy_amount_usd,
@@ -79,7 +83,7 @@ async def _save_transaction(event: TransactionEvent, score: float, symbol: str) 
 async def _save_alert(alert: AlertData, telegram_msg_id: int | None) -> None:
     async with async_session() as session:
         record = Alert(
-            token_address=alert.token_address.lower(),
+            token_address=_norm_addr(alert.token_address),
             token_symbol=alert.symbol,
             chain=alert.chain,
             score=alert.score,
@@ -115,17 +119,7 @@ async def process_transaction(event: TransactionEvent) -> dict | None:
         await increment_skipped_wallet(event.wallet_address)
         return None
 
-    security = await check_token_security(token_address, chain)
-    if security and not security.is_safe:
-        logger.info(
-            "Token %s failed safety: %s | tx: %s",
-            token_address, security.failed_checks, tx_hash,
-        )
-        await increment_skipped_wallet(event.wallet_address)
-        return None
-
-    if not security:
-        logger.warning("GoPlus unavailable for %s, proceeding without safety check", token_address)
+    security = None
 
     if await _is_duplicate_alert(token_address):
         logger.info("Token %s alerted within cooldown (%dh), skipping | tx: %s",
