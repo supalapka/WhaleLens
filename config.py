@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     telegram_channel_id: str = ""
     database_url: str = ""
     alchemy_api_key: str = ""
+    solana_rpc_url: str = "https://api.mainnet-beta.solana.com"
+    solana_rpc_api_key: str = ""
+    helius_api_key: str = ""
 
     model_config = {"env_file": BASE_DIR / ".env", "env_file_encoding": "utf-8"}
 

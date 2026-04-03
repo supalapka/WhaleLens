@@ -53,11 +53,13 @@ FACTORY_BY_CHAIN: dict[str, list[str]] = {
     c.hex_id: c.factories for c in CHAINS if c.factories
 }
 
-WRAPPED_NATIVE: set[str] = {c.wrapped_native for c in CHAINS}
+WRAPPED_NATIVE: set[str] = {c.wrapped_native for c in CHAINS} | {"So11111111111111111111111111111111111111112"}
 
 WRAPPED_NATIVE_BY_CHAIN: dict[str, str] = {c.hex_id: c.wrapped_native for c in CHAINS}
+WRAPPED_NATIVE_BY_CHAIN["solana"] = "So11111111111111111111111111111111111111112"
 
 DEXSCREENER_TO_CHAIN_HEX: dict[str, str] = {c.name: c.hex_id for c in CHAINS}
+DEXSCREENER_TO_CHAIN_HEX["solana"] = "solana"
 
 DEXSCREENER_TO_GECKO_NETWORK: dict[str, str] = {c.name: c.gecko_network for c in CHAINS}
 
@@ -77,6 +79,8 @@ STABLECOINS: dict[str, int] = {
     "0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9": 6,
     "0xaf88d065e77c8cc2239327c5edb3a432268e5831": 6,
     "0xff970a61a04b1ca14834a43f5de4533ebddb5cc8": 6,
+    "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v": 6,
+    "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB": 6,
 }
 
 KNOWN_TOKENS: set[str] = WRAPPED_NATIVE | set(STABLECOINS)
